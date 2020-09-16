@@ -148,9 +148,9 @@ size_t GetMaxOutputBufferSize(const media::Size& size) {
 constexpr size_t kInputBufferCount = 2;
 constexpr size_t kOutputBufferCount = 2;
 
-// Define V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR control code if not present in header files.
-#ifndef V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR
-#define V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR (V4L2_CID_MPEG_BASE + 388)
+// Define V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR control code if not present in header files.
+#ifndef V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR
+#define V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR (V4L2_CID_MPEG_BASE + 644)
 #endif
 
 }  // namespace
@@ -798,13 +798,13 @@ bool V4L2EncodeComponent::configureDevice(media::VideoCodecProfile outputProfile
     }
 
     // When encoding H.264 we want to prepend SPS and PPS to each IDR for resilience. Some
-    // devices support this through the V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR control.
-    // TODO(b/161495502): V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR is currently not supported
+    // devices support this through the V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR control.
+    // TODO(b/161495502): V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR is currently not supported
     // yet, just log a warning if the operation was unsuccessful for now.
-    if (mDevice->IsCtrlExposed(V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR)) {
+    if (mDevice->IsCtrlExposed(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR)) {
         if (!mDevice->SetExtCtrls(
                     V4L2_CTRL_CLASS_MPEG,
-                    {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR, 1)})) {
+                    {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR, 1)})) {
             ALOGE("Failed to configure device to prepend SPS and PPS to each IDR");
             return false;
         }
