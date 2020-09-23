@@ -95,7 +95,8 @@ public:
      * \retval C2_BAD_VALUE |bufferCount| is not greater than zero.
      * \retval C2_CORRUPTED some unknown, unrecoverable error occured during operation (unexpected).
      */
-    c2_status_t requestNewBufferSet(int32_t bufferCount);
+    c2_status_t requestNewBufferSet(int32_t bufferCount, uint32_t width, uint32_t height,
+                                    uint32_t format, C2MemoryUsage usage);
 
     /**
      * Updates the buffer from producer switch.

@@ -41,7 +41,9 @@ std::optional<uint32_t> VideoFramePool::getBufferIdFromGraphicBlock(const C2Bloc
 }
 
 // static
-c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount) {
+c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount,
+                                                const media::Size& size, uint32_t format,
+                                                C2MemoryUsage usage) {
     ALOGV("%s() blockPool.getAllocatorId() = %u", __func__, blockPool.getAllocatorId());
 
     if (blockPool.getAllocatorId() == android::V4L2AllocatorId::V4L2_BUFFERPOOL) {
@@ -49,7 +51,7 @@ c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t 
         return bpPool->requestNewBufferSet(bufferCount);
     } else if (blockPool.getAllocatorId() == C2PlatformAllocatorStore::BUFFERQUEUE) {
         C2VdaBqBlockPool* bqPool = static_cast<C2VdaBqBlockPool*>(&blockPool);
-        return bqPool->requestNewBufferSet(bufferCount);
+        return bqPool->requestNewBufferSet(bufferCount, size.width(), size.height(), format, usage);
     }
 
     ALOGE("%s(): unknown allocator ID: %u", __func__, blockPool.getAllocatorId());
@@ -74,24 +76,26 @@ std::unique_ptr<VideoFramePool> VideoFramePool::Create(
         scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
     ALOG_ASSERT(blockPool != nullptr);
 
-    if (requestNewBufferSet(*blockPool, numBuffers) != C2_OK) {
+    C2MemoryUsage memoryUsage((isSecure ? C2MemoryUsage::READ_PROTECTED : C2MemoryUsage::CPU_READ) |
+                              static_cast<uint64_t>(BufferUsage::VIDEO_DECODER));
+    if (requestNewBufferSet(*blockPool, numBuffers, size, static_cast<uint32_t>(pixelFormat),
+                            memoryUsage) != C2_OK) {
         return nullptr;
     }
 
     std::unique_ptr<VideoFramePool> pool = ::base::WrapUnique(new VideoFramePool(
-            std::move(blockPool), size, pixelFormat, isSecure, std::move(taskRunner)));
+            std::move(blockPool), size, pixelFormat, memoryUsage, std::move(taskRunner)));
     if (!pool->initialize()) return nullptr;
     return pool;
 }
 
 VideoFramePool::VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const media::Size& size,
-                               HalPixelFormat pixelFormat, bool isSecure,
+                               HalPixelFormat pixelFormat, C2MemoryUsage memoryUsage,
                                scoped_refptr<::base::SequencedTaskRunner> taskRunner)
       : mBlockPool(std::move(blockPool)),
         mSize(size),
         mPixelFormat(pixelFormat),
-        mMemoryUsage(isSecure ? C2MemoryUsage::READ_PROTECTED : C2MemoryUsage::CPU_READ,
-                     static_cast<uint64_t>(BufferUsage::VIDEO_DECODER)),
+        mMemoryUsage(memoryUsage),
         mClientTaskRunner(std::move(taskRunner)) {
     ALOGV("%s(size=%dx%d)", __func__, size.width(), size.height());
     ALOG_ASSERT(mClientTaskRunner->RunsTasksInCurrentSequence());

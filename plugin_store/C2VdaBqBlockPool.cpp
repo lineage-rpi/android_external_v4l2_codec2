@@ -452,7 +452,8 @@ public:
                                   std::shared_ptr<C2GraphicBlock>* block /* nonnull */);
     void setRenderCallback(const C2BufferQueueBlockPool::OnRenderCallback& renderCallback);
     void configureProducer(const sp<HGraphicBufferProducer>& producer);
-    c2_status_t requestNewBufferSet(int32_t bufferCount);
+    c2_status_t requestNewBufferSet(int32_t bufferCount, uint32_t width, uint32_t height,
+                                    uint32_t format, C2MemoryUsage usage);
     c2_status_t updateGraphicBlock(bool willCancel, uint32_t oldSlot, uint32_t* newSlot,
                                    std::shared_ptr<C2GraphicBlock>* block /* nonnull */);
     c2_status_t getMinBuffersForDisplay(size_t* bufferCount);
@@ -671,8 +672,6 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             if (status != android::NO_ERROR) {
                 return asC2Error(status);
             }
-            // Store buffer formats for future usage.
-            mBufferFormat = BufferFormat(width, height, pixelFormat, androidUsage);
             ALOG_ASSERT(mAllocateBuffersLock.owns_lock());
             mAllocateBuffersLock.unlock();
         }
@@ -760,7 +759,9 @@ void C2VdaBqBlockPool::Impl::setRenderCallback(
     mRenderCallback = renderCallback;
 }
 
-c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount) {
+c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uint32_t width,
+                                                        uint32_t height, uint32_t format,
+                                                        C2MemoryUsage usage) {
     if (bufferCount <= 0) {
         ALOGE("Invalid requested buffer count = %d", bufferCount);
         return C2_BAD_VALUE;
@@ -816,6 +817,9 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount) {
     mSlotAllocations.clear();
     mProducerChangeSlotMap.clear();
     mBuffersRequested = static_cast<size_t>(bufferCount);
+
+    // Store buffer formats for future usage.
+    mBufferFormat = BufferFormat(width, height, format, C2AndroidMemoryUsage(usage));
 
     status = mProducer->allowAllocation(true);
     if (status != android::NO_ERROR) {
@@ -1125,9 +1129,11 @@ void C2VdaBqBlockPool::setRenderCallback(
     }
 }
 
-c2_status_t C2VdaBqBlockPool::requestNewBufferSet(int32_t bufferCount) {
+c2_status_t C2VdaBqBlockPool::requestNewBufferSet(int32_t bufferCount, uint32_t width,
+                                                  uint32_t height, uint32_t format,
+                                                  C2MemoryUsage usage) {
     if (mImpl) {
-        return mImpl->requestNewBufferSet(bufferCount);
+        return mImpl->requestNewBufferSet(bufferCount, width, height, format, usage);
     }
     return C2_NO_INIT;
 }

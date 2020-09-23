@@ -49,7 +49,7 @@ private:
     // |isSecure| indicates the video stream is encrypted or not.
     // All public methods and the callbacks should be run on |taskRunner|.
     VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const media::Size& size,
-                   HalPixelFormat pixelFormat, bool isSecure,
+                   HalPixelFormat pixelFormat, C2MemoryUsage memoryUsage,
                    scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     bool initialize();
     void destroyTask();
@@ -66,7 +66,9 @@ private:
 
     // Ask |blockPool| to allocate the specified number of buffers.
     // |bufferCount| is the number of requested buffers.
-    static c2_status_t requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount);
+    static c2_status_t requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount,
+                                           const media::Size& size, uint32_t format,
+                                           C2MemoryUsage usage);
 
     // Ask |blockPool| to notify when a block is available via |cb|.
     // Return true if |blockPool| supports notifying buffer available.
