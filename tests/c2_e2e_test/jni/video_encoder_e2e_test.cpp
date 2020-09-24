@@ -15,7 +15,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <utils/Log.h>
+#include <log/log.h>
 
 #include "common.h"
 #include "mediacodec_encoder.h"

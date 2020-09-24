@@ -14,7 +14,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <utils/Log.h>
+#include <log/log.h>
 
 #include "common.h"
 #include "e2e_test_jni.h"
