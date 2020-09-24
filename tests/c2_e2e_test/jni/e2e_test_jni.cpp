@@ -10,7 +10,7 @@
 #include <sstream>
 
 #include <android/native_window_jni.h>
-#include <utils/Log.h>
+#include <log/log.h>
 
 #include "e2e_test_jni.h"
 #include "mediacodec_decoder.h"
