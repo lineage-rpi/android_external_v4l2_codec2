@@ -5,9 +5,6 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
-LOCAL_C_INCLUDES := \
-	system/core/include \
-
 LOCAL_SRC_FILES := \
 	video_encoder_e2e_test.cpp \
 	video_decoder_e2e_test.cpp \
@@ -25,6 +22,8 @@ LOCAL_SHARED_LIBRARIES := \
 	liblog \
 	libmediandk \
 	libandroid \
+
+LOCAL_HEADER_LIBRARIES := liblog_headers
 
 LOCAL_SDK_VERSION := 28
 LOCAL_NDK_STL_VARIANT := c++_static
