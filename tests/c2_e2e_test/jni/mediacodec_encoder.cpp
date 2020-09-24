@@ -12,8 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include <log/log.h>
 #include <media/NdkMediaFormat.h>
-#include <utils/Log.h>
 
 namespace android {
 namespace {
