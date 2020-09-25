@@ -518,7 +518,12 @@ bool V4L2Decoder::changeResolution() {
 void V4L2Decoder::tryFetchVideoFrame() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(mVideoFramePool, "mVideoFramePool is null, haven't get the instance yet?");
+
+    if (!mVideoFramePool) {
+        ALOGE("mVideoFramePool is null, failed to get the instance after resolution change?");
+        onError();
+        return;
+    }
 
     if (mOutputQueue->FreeBuffersCount() == 0) {
         ALOGD("No free V4L2 output buffers, ignore.");
