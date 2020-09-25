@@ -503,10 +503,6 @@ private:
     // Allocating buffers: requestNewBufferSet(), then a loop of fetchGraphicBlock() called by
     //                     compoenent until |mSlotAllocations|.size() equals |mBuffersRequested|.
     std::timed_mutex mConfigureProducerAndAllocateBuffersMutex;
-    // The unique lock of the procedure of allocating buffers. It should be locked in the beginning
-    // of requestNewBufferSet() and unlock in the end of the loop of fetchGraphicBlock(). Note that
-    // all calls should be in the same thread.
-    std::unique_lock<std::timed_mutex> mAllocateBuffersLock;
 
     // The map restored C2GraphicAllocation from corresponding slot index.
     std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> mSlotAllocations;
@@ -537,7 +533,6 @@ private:
 
 C2VdaBqBlockPool::Impl::Impl(const std::shared_ptr<C2Allocator>& allocator)
       : mAllocator(allocator),
-        mAllocateBuffersLock(mConfigureProducerAndAllocateBuffersMutex, std::defer_lock),
         mBuffersRequested(0u) {}
 
 c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
@@ -672,8 +667,6 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             if (status != android::NO_ERROR) {
                 return asC2Error(status);
             }
-            ALOG_ASSERT(mAllocateBuffersLock.owns_lock());
-            mAllocateBuffersLock.unlock();
         }
     }
 
@@ -765,12 +758,6 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     if (bufferCount <= 0) {
         ALOGE("Invalid requested buffer count = %d", bufferCount);
         return C2_BAD_VALUE;
-    }
-
-    if (!mAllocateBuffersLock.try_lock_for(kTimedMutexTimeoutMs)) {
-        ALOGE("Cannot acquire allocate buffers / configure producer lock over %" PRId64 " ms...",
-              static_cast<int64_t>(kTimedMutexTimeoutMs.count()));
-        return C2_BLOCKING;
     }
 
     std::lock_guard<std::mutex> lock(mMutex);
