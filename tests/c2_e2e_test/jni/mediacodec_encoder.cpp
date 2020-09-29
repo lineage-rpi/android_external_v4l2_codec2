@@ -33,10 +33,10 @@ constexpr int kTimeoutUs = 1000;  // 1ms.
 // output buffer.
 constexpr int kBufferPeriodTimeoutUs = 1000000;  // 1 sec
 
-// Helper function to get possible encoder names from |type|.
+// Helper function to get possible C2 hardware encoder names from |type|.
 // Note: A single test APK is built for both ARC++ and ARCVM, so both the C2 VEA encoder and the new
 // V4L2 encoder names need to be specified here.
-std::vector<const char*> GetArcVideoEncoderNames(VideoCodecType type) {
+std::vector<const char*> GetHWVideoEncoderNames(VideoCodecType type) {
     switch (type) {
     case VideoCodecType::H264:
         return {"c2.v4l2.avc.encoder", "c2.vea.avc.encoder"};
@@ -45,11 +45,23 @@ std::vector<const char*> GetArcVideoEncoderNames(VideoCodecType type) {
     }
 }
 
+// Helper function to get possible software encoder names from |type|.
+// Note: A single test APK is built for both ARC++ and ARCVM, so both the OMX encoder used on
+// Android P and the c2.android encoder used on Android R need to be specified here.
+std::vector<const char*> GetSWVideoEncoderNames(VideoCodecType type) {
+    switch (type) {
+    case VideoCodecType::H264:
+        return {"c2.android.avc.encoder", "OMX.google.h264.encoder"};
+    default:  // unsupported type: VP8, VP9, or unknown
+        return {};
+    }
+}
+
 }  // namespace
 
 // static
-std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(std::string input_path,
-                                                             Size visible_size) {
+std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(
+        std::string input_path, Size visible_size, bool use_sw_encoder) {
     if (visible_size.width <= 0 || visible_size.height <= 0 || visible_size.width % 2 == 1 ||
         visible_size.height % 2 == 1) {
         ALOGE("Size is not valid: %dx%d", visible_size.width, visible_size.height);
@@ -71,7 +83,9 @@ std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(std::string input_p
 
     AMediaCodec* codec = nullptr;
     // Only H264 is supported now.
-    auto encoder_names = GetArcVideoEncoderNames(VideoCodecType::H264);
+    VideoCodecType type = VideoCodecType::H264;
+    auto encoder_names =
+            use_sw_encoder ? GetSWVideoEncoderNames(type) : GetHWVideoEncoderNames(type);
     for (const auto& encoder_name : encoder_names) {
         codec = AMediaCodec_createCodecByName(encoder_name);
         if (codec) {

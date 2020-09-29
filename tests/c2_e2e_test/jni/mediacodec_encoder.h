@@ -18,7 +18,8 @@ namespace android {
 class MediaCodecEncoder {
 public:
     // Checks the argument and create MediaCodecEncoder instance.
-    static std::unique_ptr<MediaCodecEncoder> Create(std::string input_path, Size visible_size);
+    static std::unique_ptr<MediaCodecEncoder> Create(
+            std::string input_path, Size visible_size, bool use_sw_encoder);
     MediaCodecEncoder() = delete;
     ~MediaCodecEncoder();
 

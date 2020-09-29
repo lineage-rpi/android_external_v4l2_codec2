@@ -52,6 +52,7 @@ struct CmdlineArgs {
     std::string test_stream_data;
     bool run_at_fps = false;
     size_t num_encoded_frames = 0;
+    bool use_sw_encoder = false;
 };
 
 class C2VideoEncoderTestEnvironment : public testing::Environment {
@@ -147,6 +148,7 @@ public:
 
     bool run_at_fps() const { return args_.run_at_fps; }
     size_t num_encoded_frames() const { return args_.num_encoded_frames; }
+    bool use_sw_encoder() const { return args_.use_sw_encoder; }
 
 private:
     const CmdlineArgs args_;
@@ -179,7 +181,8 @@ public:
 
 protected:
     void SetUp() override {
-        encoder_ = MediaCodecEncoder::Create(g_env->input_file_path(), g_env->visible_size());
+        encoder_ = MediaCodecEncoder::Create(
+                g_env->input_file_path(), g_env->visible_size(), g_env->use_sw_encoder());
         ASSERT_TRUE(encoder_);
         encoder_->Rewind();
 
@@ -325,6 +328,7 @@ bool GetOption(int argc, char** argv, android::CmdlineArgs* args) {
             {"test_stream_data", required_argument, nullptr, 't'},
             {"run_at_fps", no_argument, nullptr, 'r'},
             {"num_encoded_frames", required_argument, nullptr, 'n'},
+            {"use_sw_encoder", no_argument, nullptr, 's'},
             {nullptr, 0, nullptr, 0},
     };
 
@@ -339,6 +343,9 @@ bool GetOption(int argc, char** argv, android::CmdlineArgs* args) {
             break;
         case 'n':
             args->num_encoded_frames = static_cast<size_t>(atoi(optarg));
+            break;
+        case 's':
+            args->use_sw_encoder = true;
             break;
         default:
             printf("[WARN] Unknown option: getopt_long() returned code 0x%x.\n", opt);
