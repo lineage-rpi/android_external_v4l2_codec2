@@ -29,7 +29,6 @@
 
 namespace media {
 class V4L2Device;
-class V4L2ReadableBuffer;
 class V4L2Queue;
 }  // namespace media
 
