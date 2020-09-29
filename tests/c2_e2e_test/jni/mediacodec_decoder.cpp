@@ -31,6 +31,8 @@ constexpr int kTimeoutWaitForInputUs = 1000;  // 1 millisecond
 constexpr size_t kTimeoutMaxRetries = 500;
 
 // Helper function to get possible C2 hardware decoder names from |type|.
+// Note: A single test APK is built for both ARC++ and ARCVM, so both the VDA decoder and the new
+// V4L2 decoder names need to be specified here.
 std::vector<const char*> GetC2VideoDecoderNames(VideoCodecType type) {
     switch (type) {
     case VideoCodecType::H264:
@@ -45,14 +47,16 @@ std::vector<const char*> GetC2VideoDecoderNames(VideoCodecType type) {
 }
 
 // Helper function to get possible software decoder names from |type|.
+// Note: A single test APK is built for both ARC++ and ARCVM, so both the OMX decoder used on
+// Android P and the c2.android decoder used on Android R need to be specified here.
 std::vector<const char*> GetSwVideoDecoderNames(VideoCodecType type) {
     switch (type) {
     case VideoCodecType::H264:
-        return {"OMX.google.h264.decoder"};
+        return {"c2.android.avc.decoder", "OMX.google.h264.decoder"};
     case VideoCodecType::VP8:
-        return {"OMX.google.vp8.decoder"};
+        return {"c2.android.vp8.decoder", "OMX.google.vp8.decoder"};
     case VideoCodecType::VP9:
-        return {"OMX.google.vp9.decoder"};
+        return {"c2.android.vp9.decoder", "OMX.google.vp9.decoder"};
     default:  // unknown type
         return {};
     }
