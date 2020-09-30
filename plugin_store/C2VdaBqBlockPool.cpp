@@ -454,8 +454,6 @@ public:
     void configureProducer(const sp<HGraphicBufferProducer>& producer);
     c2_status_t requestNewBufferSet(int32_t bufferCount, uint32_t width, uint32_t height,
                                     uint32_t format, C2MemoryUsage usage);
-    c2_status_t updateGraphicBlock(bool willCancel, uint32_t oldSlot, uint32_t* newSlot,
-                                   std::shared_ptr<C2GraphicBlock>* block /* nonnull */);
     c2_status_t getMinBuffersForDisplay(size_t* bufferCount);
     bool setNotifyBlockAvailableCb(::base::OnceClosure cb);
 
@@ -510,11 +508,6 @@ private:
     size_t mBuffersRequested;
     // Currently requested buffer formats.
     BufferFormat mBufferFormat;
-    // The map recorded the slot indices from old producer to new producer.
-    std::map<int32_t, int32_t> mProducerChangeSlotMap;
-    // The counter for representing the buffer count in client. Only used in producer switching
-    // case. It will be reset in switchProducer(), and accumulated in updateGraphicBlock() routine.
-    uint32_t mBuffersInClient = 0u;
     // The indicator to record if producer has been switched. Set to true when producer is switched.
     // Toggle off when requestNewBufferSet() is called. We forcedly detach all slots to make sure
     // all slots are available, except the ones owned by client.
@@ -555,13 +548,6 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             return C2_NO_MEMORY;
         }
         return C2_OK;
-    }
-
-    // The existence of |mProducerChangeSlotMap| indicates producer is just switched. Use return
-    // code C2_BAD_STATE to inform the component to handle the procedure of producer change.
-    // TODO(johnylin): consider to inform producer change to component in an active way.
-    if (!mProducerChangeSlotMap.empty()) {
-        return C2_BAD_STATE;
     }
 
     C2AndroidMemoryUsage androidUsage = usage;
@@ -810,7 +796,6 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     // Release all remained slot buffer references here. CCodec should either cancel or queue its
     // owned buffers from this set before the next resolution change.
     mSlotAllocations.clear();
-    mProducerChangeSlotMap.clear();
     mBuffersRequested = static_cast<size_t>(bufferCount);
 
     // Store buffer formats for future usage.
@@ -849,7 +834,6 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
         ALOGI("Producer (Surface) is going to switch... ( %" PRIu64 " -> %" PRIu64 " )",
               mProducerId, producerId);
         if (!switchProducer(newProducer.get(), producerId)) {
-            mProducerChangeSlotMap.clear();
             return;
         }
     } else {
@@ -896,9 +880,6 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
         return false;
     }
 
-    // Reset "buffer count in client". It will be accumulated in updateGraphicBlock() routine.
-    mBuffersInClient = 0;
-
     // Set allowAllocation to new producer.
     if (newProducer->allowAllocation(true) != android::NO_ERROR) {
         return false;
@@ -917,7 +898,6 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
     }
 
     // Attach all buffers to new producer.
-    mProducerChangeSlotMap.clear();
     int32_t slot;
     std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> newSlotAllocations;
     for (auto iter = mSlotAllocations.begin(); iter != mSlotAllocations.end(); ++iter) {
@@ -965,7 +945,6 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
         ALOGV("Transfered buffer from old producer to new, slot prev: %d -> new %d", iter->first,
               slot);
         newSlotAllocations[slot] = std::move(alloc);
-        mProducerChangeSlotMap[iter->first] = slot;
     }
 
     // Set allowAllocation to false so producer could not allocate new buffers.
@@ -985,59 +964,6 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
 
     mSlotAllocations = std::move(newSlotAllocations);
     return true;
-}
-
-c2_status_t C2VdaBqBlockPool::Impl::updateGraphicBlock(
-        bool willCancel, uint32_t oldSlot, uint32_t* newSlot,
-        std::shared_ptr<C2GraphicBlock>* block /* nonnull */) {
-    std::lock_guard<std::mutex> lock(mMutex);
-
-    if (mProducerChangeSlotMap.empty()) {
-        ALOGD("A new buffer set is requested right after producer change, no more update needed.");
-        return C2_CANCELED;
-    }
-
-    auto it = mProducerChangeSlotMap.find(static_cast<int32_t>(oldSlot));
-    if (it == mProducerChangeSlotMap.end()) {
-        ALOGE("Cannot find old slot = %u in map...", oldSlot);
-        return C2_NOT_FOUND;
-    }
-
-    int32_t slot = it->second;
-    *newSlot = static_cast<uint32_t>(slot);
-    mProducerChangeSlotMap.erase(it);
-
-    if (willCancel) {
-        sp<Fence> fence = new Fence();
-        // The old C2GraphicBlock might be owned by client. Cancel this slot.
-        if (mProducer->cancelBuffer(slot, fence) != android::NO_ERROR) {
-            return C2_CORRUPTED;
-        }
-        // Client might try to attach the old buffer to the current producer on client's end,
-        // although it is useless for us anymore. However it will still occupy an available slot.
-        mBuffersInClient++;
-    } else {
-        // The old C2GraphicBlock is still owned by component, replace by the new one and keep this
-        // slot dequeued.
-        auto poolData =
-                std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, shared_from_this());
-        *block = _C2BlockFactory::CreateGraphicBlock(mSlotAllocations[slot], std::move(poolData));
-    }
-
-    if (mProducerChangeSlotMap.empty()) {
-        // The updateGraphicBlock() routine is about to finish.
-        // Set the correct maxDequeuedBufferCount to producer, which is "requested buffer count" +
-        // "buffer count in client".
-        ALOGV("Requested buffer count: %zu, buffer count in client: %u", mSlotAllocations.size(),
-              mBuffersInClient);
-        if (mProducer->setMaxDequeuedBufferCount(mSlotAllocations.size() + mBuffersInClient) !=
-            android::NO_ERROR) {
-            return C2_CORRUPTED;
-        }
-        mProducerSwitched = true;
-    }
-
-    return C2_OK;
 }
 
 c2_status_t C2VdaBqBlockPool::Impl::getMinBuffersForDisplay(size_t* bufferCount) {
@@ -1137,15 +1063,6 @@ void C2VdaBqBlockPool::configureProducer(const sp<HGraphicBufferProducer>& produ
     if (mImpl) {
         mImpl->configureProducer(producer);
     }
-}
-
-c2_status_t C2VdaBqBlockPool::updateGraphicBlock(
-        bool willCancel, uint32_t oldSlot, uint32_t* newSlot,
-        std::shared_ptr<C2GraphicBlock>* block /* nonnull */) {
-    if (mImpl) {
-        return mImpl->updateGraphicBlock(willCancel, oldSlot, newSlot, block);
-    }
-    return C2_NO_INIT;
 }
 
 c2_status_t C2VdaBqBlockPool::getMinBuffersForDisplay(size_t* bufferCount) {

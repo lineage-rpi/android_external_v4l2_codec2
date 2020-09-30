@@ -99,27 +99,6 @@ public:
                                     uint32_t format, C2MemoryUsage usage);
 
     /**
-     * Updates the buffer from producer switch.
-     *
-     * \note C2VdaBqBlockPool-specific function
-     *
-     * \param willCancel if true, the corresponding slot will be canceled to new producer. Otherwise
-     *                   the new graphic block will be returned as |block|.
-     * \param oldSlot    the slot index from old producer the caller provided.
-     * \param newSlot    the corresponding slot index of new producer is filled.
-     * \param block      if |willCancel| is false, the new graphic block is stored.
-     *
-     * \retval C2_OK        the operation was successful.
-     * \retval C2_NO_INIT   this class is not initialized.
-     * \retval C2_NOT_FOUND cannot find |oldSlot| in the slot changing map.
-     * \retval C2_CANCELED  indicates buffer format is changed and a new buffer set is allocated, no
-     *                      more update needed.
-     * \retval C2_CORRUPTED some unknown, unrecoverable error occured during operation (unexpected).
-     */
-    c2_status_t updateGraphicBlock(bool willCancel, uint32_t oldSlot, uint32_t* newSlot,
-                                   std::shared_ptr<C2GraphicBlock>* block /* nonnull */);
-
-    /**
      * Gets minimum undequeued buffer count for display from producer.
      *
      * \note C2VdaBqBlockPool-specific function
