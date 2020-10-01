@@ -550,6 +550,10 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             return err;
         }
         *block = _C2BlockFactory::CreateGraphicBlock(alloc);
+        if (*block == nullptr) {
+            ALOGE("failed to create GraphicBlock: no memory");
+            return C2_NO_MEMORY;
+        }
         return C2_OK;
     }
 
@@ -672,6 +676,10 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 
     auto poolData = std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, shared_from_this());
     *block = _C2BlockFactory::CreateGraphicBlock(mSlotAllocations[slot], std::move(poolData));
+    if (*block == nullptr) {
+        ALOGE("failed to create GraphicBlock: no memory");
+        return C2_NO_MEMORY;
+    }
     return C2_OK;
 }
 
