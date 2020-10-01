@@ -454,7 +454,6 @@ public:
     void configureProducer(const sp<HGraphicBufferProducer>& producer);
     c2_status_t requestNewBufferSet(int32_t bufferCount, uint32_t width, uint32_t height,
                                     uint32_t format, C2MemoryUsage usage);
-    c2_status_t getMinBuffersForDisplay(size_t* bufferCount);
     bool setNotifyBlockAvailableCb(::base::OnceClosure cb);
 
 private:
@@ -966,27 +965,6 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
     return true;
 }
 
-c2_status_t C2VdaBqBlockPool::Impl::getMinBuffersForDisplay(size_t* bufferCount) {
-    std::lock_guard<std::mutex> lock(mMutex);
-    if (!mProducer) {
-        ALOGD("No HGraphicBufferProducer is configured...");
-        return C2_NO_INIT;
-    }
-
-    int32_t status, value;
-    status = mProducer->query(NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS, &value);
-    if (status != android::NO_ERROR) {
-        ALOGE("query(NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS) failed: %d", status);
-        return asC2Error(status);
-    }
-    if (value <= 0) {
-        ALOGE("Illegal value of NATIVE_WINDOW_MIN_UNDEQUEUED_BUFFERS = %d", value);
-        return C2_BAD_VALUE;
-    }
-    *bufferCount = static_cast<size_t>(value);
-    return C2_OK;
-}
-
 void C2VdaBqBlockPool::Impl::detachBuffer(uint64_t producerId, int32_t slotId) {
     ALOGV("detachBuffer: producer id = %" PRIu64 ", slot = %d", producerId, slotId);
     std::lock_guard<std::mutex> lock(mMutex);
@@ -1063,13 +1041,6 @@ void C2VdaBqBlockPool::configureProducer(const sp<HGraphicBufferProducer>& produ
     if (mImpl) {
         mImpl->configureProducer(producer);
     }
-}
-
-c2_status_t C2VdaBqBlockPool::getMinBuffersForDisplay(size_t* bufferCount) {
-    if (mImpl) {
-        return mImpl->getMinBuffersForDisplay(bufferCount);
-    }
-    return C2_NO_INIT;
 }
 
 bool C2VdaBqBlockPool::setNotifyBlockAvailableCb(::base::OnceClosure cb) {

@@ -99,20 +99,6 @@ public:
                                     uint32_t format, C2MemoryUsage usage);
 
     /**
-     * Gets minimum undequeued buffer count for display from producer.
-     *
-     * \note C2VdaBqBlockPool-specific function
-     *
-     * \param bufferCount   the minimum undequeued buffer count for display is filled.
-     *
-     * \retval C2_OK        the operation was successful.
-     * \retval C2_NO_INIT   this class is not initialized, or producer is not assigned.
-     * \retval C2_BAD_VALUE the queried value is illegal (less than 0).
-     * \retval C2_CORRUPTED some unknown, unrecoverable error occured during operation (unexpected).
-     */
-    c2_status_t getMinBuffersForDisplay(size_t* bufferCount);
-
-    /**
      * Set the callback that will be triggered when there is block available.
      *
      * \note C2VdaBqBlockPool-specific function
