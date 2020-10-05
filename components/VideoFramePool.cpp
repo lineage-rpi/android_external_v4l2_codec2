@@ -76,8 +76,15 @@ std::unique_ptr<VideoFramePool> VideoFramePool::Create(
         scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
     ALOG_ASSERT(blockPool != nullptr);
 
-    C2MemoryUsage memoryUsage((isSecure ? C2MemoryUsage::READ_PROTECTED : C2MemoryUsage::CPU_READ) |
-                              static_cast<uint64_t>(BufferUsage::VIDEO_DECODER));
+    uint64_t usage = static_cast<uint64_t>(BufferUsage::VIDEO_DECODER);
+    if (isSecure) {
+        usage |= C2MemoryUsage::READ_PROTECTED;
+    } else if (blockPool->getAllocatorId() == android::V4L2AllocatorId::V4L2_BUFFERPOOL) {
+        // CPU access to buffers is only required in byte buffer mode.
+        usage |= C2MemoryUsage::CPU_READ;
+    }
+    const C2MemoryUsage memoryUsage(usage);
+
     if (requestNewBufferSet(*blockPool, numBuffers, size, static_cast<uint32_t>(pixelFormat),
                             memoryUsage) != C2_OK) {
         return nullptr;
