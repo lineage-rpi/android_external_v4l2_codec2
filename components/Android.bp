@@ -23,9 +23,11 @@ cc_library {
         "V4L2Decoder.cpp",
         "V4L2DecodeComponent.cpp",
         "V4L2DecodeInterface.cpp",
+        "V4L2Encoder.cpp",
         "V4L2EncodeComponent.cpp",
         "V4L2EncodeInterface.cpp",
         "VideoDecoder.cpp",
+        "VideoEncoder.cpp",
     ],
     export_include_dirs: [
         "include",
