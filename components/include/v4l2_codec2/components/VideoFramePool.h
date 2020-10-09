@@ -5,7 +5,9 @@
 #ifndef ANDROID_V4L2_CODEC2_COMPONENTS_VIDEO_FRAME_POOL_H
 #define ANDROID_V4L2_CODEC2_COMPONENTS_VIDEO_FRAME_POOL_H
 
+#include <atomic>
 #include <memory>
+#include <optional>
 #include <queue>
 
 #include <C2Buffer.h>
@@ -25,11 +27,12 @@ namespace android {
 // C2BlockPool::fetchGraphicBlock() times out.
 class VideoFramePool {
 public:
-    using GetVideoFrameCB = base::OnceCallback<void(std::unique_ptr<VideoFrame>)>;
+    using FrameWithBlockId = std::pair<std::unique_ptr<VideoFrame>, uint32_t>;
+    using GetVideoFrameCB = base::OnceCallback<void(std::optional<FrameWithBlockId>)>;
 
     static std::unique_ptr<VideoFramePool> Create(
-            std::shared_ptr<C2BlockPool> blockPool, const media::Size& size,
-            HalPixelFormat pixelFormat, bool isSecure,
+            std::shared_ptr<C2BlockPool> blockPool, const size_t numBuffers,
+            const media::Size& size, HalPixelFormat pixelFormat, bool isSecure,
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~VideoFramePool();
 
@@ -53,7 +56,16 @@ private:
     void destroyTask();
 
     void getVideoFrameTask(GetVideoFrameCB cb);
-    void onVideoFrameReady(GetVideoFrameCB cb, std::unique_ptr<VideoFrame> frame);
+    void onVideoFrameReady(GetVideoFrameCB cb, std::optional<FrameWithBlockId> frameWithBlockId);
+
+    // Extracts buffer ID from graphic block.
+    // |block| is the graphic block allocated by |blockPool|.
+    static std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2BlockPool& blockPool,
+                                                               const C2Block2D& block);
+
+    // Ask |blockPool| to allocate the specified number of buffers.
+    // |bufferCount| is the number of requested buffers.
+    static c2_status_t requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount);
 
     std::shared_ptr<C2BlockPool> mBlockPool;
     const media::Size mSize;
@@ -65,6 +77,9 @@ private:
     scoped_refptr<::base::SequencedTaskRunner> mClientTaskRunner;
     ::base::Thread mFetchThread{"VideoFramePoolFetchThread"};
     scoped_refptr<::base::SequencedTaskRunner> mFetchTaskRunner;
+
+    // Set to true to unconditionally interrupt pending frame requests.
+    std::atomic<bool> mCancelGetFrame = false;
 
     ::base::WeakPtr<VideoFramePool> mClientWeakThis;
     ::base::WeakPtr<VideoFramePool> mFetchWeakThis;
