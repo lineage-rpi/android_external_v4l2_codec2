@@ -11,7 +11,6 @@
 #include <optional>
 
 #include <base/callback.h>
-#include <base/files/scoped_file.h>
 #include <base/memory/weak_ptr.h>
 
 #include <rect.h>
@@ -68,8 +67,7 @@ private:
     bool changeResolution();
 
     void tryFetchVideoFrame();
-    void onVideoFrameReady(media::V4L2WritableBufferRef outputBuffer,
-                           std::unique_ptr<VideoFrame> block);
+    void onVideoFrameReady(std::optional<VideoFramePool::FrameWithBlockId> frameWithBlockId);
 
     std::optional<size_t> getNumOutputBuffers();
     std::optional<struct v4l2_format> getFormatInfo();
@@ -97,6 +95,11 @@ private:
     media::Rect mVisibleRect;
 
     std::map<size_t, std::unique_ptr<VideoFrame>> mFrameAtDevice;
+
+    // Block IDs can be arbitrarily large, but we only have a limited number of
+    // buffers. This maintains an association between a block ID and a specific
+    // V4L2 buffer index.
+    std::map<size_t, size_t> mBlockIdToV4L2Id;
 
     State mState = State::Idle;
 

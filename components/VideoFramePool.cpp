@@ -17,20 +17,56 @@
 #include <log/log.h>
 
 #include <v4l2_codec2/components/VideoTypes.h>
+#include <v4l2_codec2/plugin_store/C2VdaBqBlockPool.h>
+#include <v4l2_codec2/plugin_store/C2VdaPooledBlockPool.h>
+#include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
 
 using android::hardware::graphics::common::V1_0::BufferUsage;
 
 namespace android {
-namespace {
-// The number of times and timeout used between subsequent calls when fetching graphic blocks.
-constexpr size_t kAllocateBufferMaxRetries = 32;
-constexpr size_t kFetchRetryDelayUs = 1000;
-}  // namespace
+
+// static
+std::optional<uint32_t> VideoFramePool::getBufferIdFromGraphicBlock(const C2BlockPool& blockPool,
+                                                                    const C2Block2D& block) {
+    ALOGV("%s() blockPool.getAllocatorId() = %u", __func__, blockPool.getAllocatorId());
+
+    if (blockPool.getAllocatorId() == android::V4L2AllocatorId::V4L2_BUFFERPOOL) {
+        return C2VdaPooledBlockPool::getBufferIdFromGraphicBlock(block);
+    } else if (blockPool.getAllocatorId() == C2PlatformAllocatorStore::BUFFERQUEUE) {
+        return C2VdaBqBlockPool::getBufferIdFromGraphicBlock(block);
+    }
+
+    ALOGE("%s(): unknown allocator ID: %u", __func__, blockPool.getAllocatorId());
+    return std::nullopt;
+}
+
+// static
+c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount) {
+    ALOGV("%s() blockPool.getAllocatorId() = %u", __func__, blockPool.getAllocatorId());
+
+    if (blockPool.getAllocatorId() == android::V4L2AllocatorId::V4L2_BUFFERPOOL) {
+        C2VdaPooledBlockPool* bpPool = static_cast<C2VdaPooledBlockPool*>(&blockPool);
+        return bpPool->requestNewBufferSet(bufferCount);
+    } else if (blockPool.getAllocatorId() == C2PlatformAllocatorStore::BUFFERQUEUE) {
+        C2VdaBqBlockPool* bqPool = static_cast<C2VdaBqBlockPool*>(&blockPool);
+        return bqPool->requestNewBufferSet(bufferCount);
+    }
+
+    ALOGE("%s(): unknown allocator ID: %u", __func__, blockPool.getAllocatorId());
+    return C2_BAD_VALUE;
+}
 
 // static
 std::unique_ptr<VideoFramePool> VideoFramePool::Create(
-        std::shared_ptr<C2BlockPool> blockPool, const media::Size& size, HalPixelFormat pixelFormat,
-        bool isSecure, scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
+        std::shared_ptr<C2BlockPool> blockPool, const size_t numBuffers, const media::Size& size,
+        HalPixelFormat pixelFormat, bool isSecure,
+        scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
+    ALOG_ASSERT(blockPool != nullptr);
+
+    if (requestNewBufferSet(*blockPool, numBuffers) != C2_OK) {
+        return nullptr;
+    }
+
     std::unique_ptr<VideoFramePool> pool = ::base::WrapUnique(new VideoFramePool(
             std::move(blockPool), size, pixelFormat, isSecure, std::move(taskRunner)));
     if (!pool->initialize()) return nullptr;
@@ -70,6 +106,7 @@ VideoFramePool::~VideoFramePool() {
     ALOG_ASSERT(mClientTaskRunner->RunsTasksInCurrentSequence());
 
     mClientWeakThisFactory.InvalidateWeakPtrs();
+    mCancelGetFrame = true;
 
     if (mFetchThread.IsRunning()) {
         mFetchTaskRunner->PostTask(FROM_HERE,
@@ -104,44 +141,60 @@ bool VideoFramePool::hasPendingRequests() const {
 void VideoFramePool::getVideoFrameTask(GetVideoFrameCB cb) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mFetchTaskRunner->RunsTasksInCurrentSequence());
-
-    std::unique_ptr<VideoFrame> frame = nullptr;
+    // Initial delay: 64us
+    constexpr size_t kFetchRetryDelayInit = 64;
+    // Max delay: 16ms (1 frame at 60fps)
+    constexpr size_t kFetchRetryDelayMax = 16384;
+    std::optional<FrameWithBlockId> frameWithBlockId;
 
     size_t numRetries = 0;
-    while (numRetries < kAllocateBufferMaxRetries) {
+    size_t delay = kFetchRetryDelayInit;
+    while (true) {
+        if (mCancelGetFrame) {
+            ALOGW("Request to get frame canceled after %zu retries", numRetries);
+            break;
+        }
+
         std::shared_ptr<C2GraphicBlock> block;
         c2_status_t err = mBlockPool->fetchGraphicBlock(mSize.width(), mSize.height(),
                                                         static_cast<uint32_t>(mPixelFormat),
                                                         mMemoryUsage, &block);
 
         if (err == C2_OK) {
-            frame = VideoFrame::Create(std::move(block));
+            ALOG_ASSERT(block != nullptr);
+            std::optional<uint32_t> bufferId = getBufferIdFromGraphicBlock(*mBlockPool, *block);
+            std::unique_ptr<VideoFrame> frame = VideoFrame::Create(std::move(block));
+            // Only pass the frame + id pair if both have successfully been obtained.
+            // Otherwise exit the loop so a nullopt is passed to the client.
+            if (bufferId && frame) {
+                frameWithBlockId = std::make_pair(std::move(frame), *bufferId);
+            }
             break;
         } else if (err != C2_TIMED_OUT && err != C2_BLOCKING) {
             ALOGE("Failed to fetch block, err=%d, retry %zu times", err, numRetries);
             break;
         } else {
             ++numRetries;
-            ALOGD("fetchGraphicBlock() timeout. retry %zu times", numRetries);
-            usleep(kFetchRetryDelayUs);
+            ALOGD("fetchGraphicBlock() timeout, waiting %zuus (%zu retry)", delay, numRetries);
+            usleep(delay);
+            // Exponential backoff
+            delay = std::min(delay * 2, kFetchRetryDelayMax);
         }
-    }
-    if (numRetries == kAllocateBufferMaxRetries) {
-        ALOGE("Timeout to fetch block, retry %zu times", numRetries);
     }
 
     mClientTaskRunner->PostTask(
             FROM_HERE, ::base::BindOnce(&VideoFramePool::onVideoFrameReady, mClientWeakThis,
-                                        std::move(cb), std::move(frame)));
+                                        std::move(cb), std::move(frameWithBlockId)));
 }
 
-void VideoFramePool::onVideoFrameReady(GetVideoFrameCB cb, std::unique_ptr<VideoFrame> frame) {
+void VideoFramePool::onVideoFrameReady(GetVideoFrameCB cb,
+                                       std::optional<FrameWithBlockId> frameWithBlockId) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mClientTaskRunner->RunsTasksInCurrentSequence());
 
     --mNumPendingRequests;
 
-    if (!frame) {
+    if (!frameWithBlockId) {
         ALOGE("Failed to get GraphicBlock, abandoning all pending requests.");
         mClientWeakThisFactory.InvalidateWeakPtrs();
         mClientWeakThis = mClientWeakThisFactory.GetWeakPtr();
@@ -149,7 +202,7 @@ void VideoFramePool::onVideoFrameReady(GetVideoFrameCB cb, std::unique_ptr<Video
         mNumPendingRequests = 0;
     }
 
-    std::move(cb).Run(std::move(frame));
+    std::move(cb).Run(std::move(frameWithBlockId));
 }
 
 }  // namespace android
