@@ -946,10 +946,14 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
         newSlotAllocations[slot] = std::move(alloc);
     }
 
-    // Set allowAllocation to false so producer could not allocate new buffers.
-    if (newProducer->allowAllocation(false) != android::NO_ERROR) {
-        ALOGE("allowAllocation(false) failed");
-        return false;
+    // Set allowAllocation to false if we track enough buffers, so that the producer does not
+    // allocate new buffers. Otherwise allocation will be disabled in fetchGraphicBlock after enough
+    // buffers have been allocated.
+    if (newSlotAllocations.size() == mBuffersRequested) {
+        if (newProducer->allowAllocation(false) != android::NO_ERROR) {
+            ALOGE("allowAllocation(false) failed");
+            return false;
+        }
     }
 
     // Try to detach all buffers from old producer.
