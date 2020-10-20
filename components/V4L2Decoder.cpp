@@ -396,8 +396,8 @@ void V4L2Decoder::serviceDeviceTask(bool event) {
         const int32_t bitstreamId = static_cast<int32_t>(dequeuedBuffer->GetTimeStamp().tv_sec);
         const size_t bytesUsed = dequeuedBuffer->GetPlaneBytesUsed(0);
         const bool isLast = dequeuedBuffer->IsLast();
-        ALOGV("DQBUF from output queue, bufferId=%zu, corresponding bitstreamId=%d, bytesused=%zu",
-              bufferId, bitstreamId, bytesUsed);
+        ALOGV("DQBUF from output queue, bufferId=%zu, bitstreamId=%d, bytesused=%zu, isLast=%d",
+              bufferId, bitstreamId, bytesUsed, isLast);
 
         // Get the corresponding VideoFrame of the dequeued buffer.
         auto it = mFrameAtDevice.find(bufferId);

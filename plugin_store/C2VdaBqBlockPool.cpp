@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 #include <C2AllocatorGralloc.h>
@@ -519,7 +520,7 @@ C2VdaBqBlockPool::Impl::Impl(const std::shared_ptr<C2Allocator>& allocator)
 c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         uint32_t width, uint32_t height, uint32_t format, C2MemoryUsage usage,
         std::shared_ptr<C2GraphicBlock>* block /* nonnull */) {
-    ALOGV("%s()", __func__);
+    ALOGV("%s(%ux%u)", __func__, width, height);
     std::lock_guard<std::mutex> lock(mMutex);
 
     if (!mProducer) {
@@ -602,13 +603,14 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         }
     }
 
+    ALOGV("%s(%ux%u): dequeued slot=%d", __func__, width, height, slot);
     auto iter = mSlotAllocations.find(slot);
     if (iter == mSlotAllocations.end()) {
         if (mSlotAllocations.size() >= mBuffersRequested) {
             // The dequeued slot has a pre-allocated buffer whose size and format is as same as
             // currently requested (but was not dequeued during allocation cycle). Just detach it to
             // free this slot. And try dequeueBuffer again.
-            ALOGD("dequeued a new slot index but already allocated enough buffers. Detach it.");
+            ALOGD("dequeued a new slot %d but already allocated enough buffers. Detach it.", slot);
 
             if (mProducer->detachBuffer(slot) != android::NO_ERROR) {
                 return C2_CORRUPTED;
@@ -653,6 +655,12 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 
         mSlotAllocations[slot] = std::move(alloc);
         if (mSlotAllocations.size() == mBuffersRequested) {
+#ifdef LOG_NDEBUG
+            std::stringstream ss;
+            for (const auto& slot : mSlotAllocations) ss << slot.first << ", ";
+            ALOGV("Tracked IGBP slots: %s", ss.str().c_str());
+#endif  // LOG_NDEBUG
+
             // Already allocated enough buffers, set allowAllocation to false to restrict the
             // eligible slots to allocated ones for future dequeue.
             status = mProducer->allowAllocation(false);
