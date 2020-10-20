@@ -30,8 +30,6 @@ namespace {
 
 // The wait time for acquire fence in milliseconds.
 constexpr int kFenceWaitTimeMs = 10;
-// The timeout limit of acquiring lock of timed_mutex in milliseconds.
-constexpr std::chrono::milliseconds kTimedMutexTimeoutMs = std::chrono::milliseconds(500);
 
 }  // namespace
 
@@ -494,12 +492,6 @@ private:
     // Function mutex to lock at the start of each API function call for protecting the
     // synchronization of all member variables.
     std::mutex mMutex;
-    // The mutex of excluding the procedures of configuring producer and allocating buffers. They
-    // should be blocked mutually. Set the timeout for acquiring lock in case of any deadlock.
-    // Configuring producer: configureProducer() called by CCodec.
-    // Allocating buffers: requestNewBufferSet(), then a loop of fetchGraphicBlock() called by
-    //                     compoenent until |mSlotAllocations|.size() equals |mBuffersRequested|.
-    std::timed_mutex mConfigureProducerAndAllocateBuffersMutex;
 
     // The map restored C2GraphicAllocation from corresponding slot index.
     std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> mSlotAllocations;
@@ -785,14 +777,6 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     ALOGV("configureProducer");
     if (producer == nullptr) {
         ALOGE("input producer is nullptr...");
-        return;
-    }
-
-    std::unique_lock<std::timed_mutex> configureProducerLock(
-            mConfigureProducerAndAllocateBuffersMutex, std::defer_lock);
-    if (!configureProducerLock.try_lock_for(kTimedMutexTimeoutMs)) {
-        ALOGE("Cannot acquire configure producer / allocate buffers lock over %" PRId64 " ms...",
-              static_cast<int64_t>(kTimedMutexTimeoutMs.count()));
         return;
     }
 
