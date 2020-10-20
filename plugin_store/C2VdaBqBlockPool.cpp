@@ -507,10 +507,6 @@ private:
     size_t mBuffersRequested;
     // Currently requested buffer formats.
     BufferFormat mBufferFormat;
-    // The indicator to record if producer has been switched. Set to true when producer is switched.
-    // Toggle off when requestNewBufferSet() is called. We forcedly detach all slots to make sure
-    // all slots are available, except the ones owned by client.
-    bool mProducerSwitched = false;
 
     // Listener for buffer release events.
     sp<EventNotifier> mFetchBufferNotifier;
@@ -757,28 +753,6 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     if (!mProducer) {
         ALOGD("No HGraphicBufferProducer is configured...");
         return C2_NO_INIT;
-    }
-
-    if (mProducerSwitched) {
-        // Some slots can be occupied by buffers transferred from the old producer. They will not
-        // used in the current producer. Free the slots of the buffers here. But we cannot find a
-        // slot is associated with the staled buffer. We free all slots whose associated buffers
-        // are not owned by client.
-        ALOGI("requestNewBufferSet: detachBuffer all slots forcedly");
-        for (int32_t slot = 0; slot < static_cast<int32_t>(NUM_BUFFER_SLOTS); ++slot) {
-            if (mSlotAllocations.find(slot) != mSlotAllocations.end()) {
-                // Skip detaching the buffer which is owned by client now.
-                continue;
-            }
-            status_t status = mProducer->detachBuffer(slot);
-            if (status == android::NO_INIT) {
-                // No more active buffer slot. Break the loop now.
-                break;
-            } else if (status != android::NO_ERROR) {
-                return C2_CORRUPTED;
-            }
-        }
-        mProducerSwitched = false;
     }
 
     ALOGV("Requested new buffer count: %d, still dequeued buffer count: %zu", bufferCount,
