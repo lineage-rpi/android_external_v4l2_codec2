@@ -496,7 +496,9 @@ private:
     // The map restored C2GraphicAllocation from corresponding slot index.
     std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> mSlotAllocations;
     // Number of buffers requested on requestNewBufferSet() call.
-    size_t mBuffersRequested;
+    size_t mBuffersRequested = 0u;
+    // Set to true when we need to call IGBP::setMaxDequeuedBufferCount() at next fetching buffer.
+    bool mPendingBuffersRequested = false;
     // Currently requested buffer formats.
     BufferFormat mBufferFormat;
 
@@ -512,8 +514,7 @@ private:
 };
 
 C2VdaBqBlockPool::Impl::Impl(const std::shared_ptr<C2Allocator>& allocator)
-      : mAllocator(allocator),
-        mBuffersRequested(0u) {}
+      : mAllocator(allocator) {}
 
 c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         uint32_t width, uint32_t height, uint32_t format, C2MemoryUsage usage,
@@ -535,6 +536,20 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             return C2_NO_MEMORY;
         }
         return C2_OK;
+    }
+
+    if (mPendingBuffersRequested) {
+        status_t status = mProducer->setMaxDequeuedBufferCount(mBuffersRequested);
+        if (status == android::BAD_VALUE) {
+            // Note: We might be stuck here forever if the consumer never release enough buffers or
+            // we hit other restriction of IGBP::setMaxDequeuedBufferCount() unexpectedly.
+            ALOGI("Free buffers are not enough, waiting for consumer release buffers.");
+            return C2_TIMED_OUT;
+        } else if (status != android::NO_ERROR) {
+            return asC2Error(status);
+        }
+
+        mPendingBuffersRequested = false;
     }
 
     C2AndroidMemoryUsage androidUsage = usage;
@@ -736,6 +751,9 @@ void C2VdaBqBlockPool::Impl::setRenderCallback(
 c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uint32_t width,
                                                         uint32_t height, uint32_t format,
                                                         C2MemoryUsage usage) {
+    ALOGV("%s(bufferCount=%d, size=%ux%u, format=0x%x, usage=%" PRIu64 ")", __func__, bufferCount,
+          width, height, format, usage.expected);
+
     if (bufferCount <= 0) {
         ALOGE("Invalid requested buffer count = %d", bufferCount);
         return C2_BAD_VALUE;
@@ -747,13 +765,7 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
         return C2_NO_INIT;
     }
 
-    ALOGV("Requested new buffer count: %d, still dequeued buffer count: %zu", bufferCount,
-          mSlotAllocations.size());
-
-    // The remained slot indices in |mSlotAllocations| now are still dequeued (un-available).
-    // maxDequeuedBufferCount should be set to "new requested buffer count" + "still dequeued buffer
-    // count" to make sure it has enough available slots to request buffer from.
-    status_t status = mProducer->setMaxDequeuedBufferCount(bufferCount + mSlotAllocations.size());
+    status_t status = mProducer->allowAllocation(true);
     if (status != android::NO_ERROR) {
         return asC2Error(status);
     }
@@ -762,14 +774,11 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     // owned buffers from this set before the next resolution change.
     mSlotAllocations.clear();
     mBuffersRequested = static_cast<size_t>(bufferCount);
+    mPendingBuffersRequested = true;
 
     // Store buffer formats for future usage.
     mBufferFormat = BufferFormat(width, height, format, C2AndroidMemoryUsage(usage));
 
-    status = mProducer->allowAllocation(true);
-    if (status != android::NO_ERROR) {
-        return asC2Error(status);
-    }
     return C2_OK;
 }
 
