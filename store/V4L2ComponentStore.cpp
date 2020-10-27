@@ -102,6 +102,11 @@ c2_status_t V4L2ComponentStore::createComponent(C2String name,
                                                 std::shared_ptr<C2Component>* const component) {
     ALOGV("%s(%s)", __func__, name.c_str());
 
+    if (!V4L2ComponentName::isValid(name.c_str())) {
+        ALOGI("%s(): Invalid component name: %s", __func__, name.c_str());
+        return C2_NOT_FOUND;
+    }
+
     auto factory = GetFactory(name);
     if (factory == nullptr) return C2_CORRUPTED;
 
@@ -112,6 +117,11 @@ c2_status_t V4L2ComponentStore::createComponent(C2String name,
 c2_status_t V4L2ComponentStore::createInterface(
         C2String name, std::shared_ptr<C2ComponentInterface>* const interface) {
     ALOGV("%s(%s)", __func__, name.c_str());
+
+    if (!V4L2ComponentName::isValid(name.c_str())) {
+        ALOGI("%s(): Invalid component name: %s", __func__, name.c_str());
+        return C2_NOT_FOUND;
+    }
 
     auto factory = GetFactory(name);
     if (factory == nullptr) return C2_CORRUPTED;
@@ -171,11 +181,7 @@ c2_status_t V4L2ComponentStore::querySupportedValues_sm(
 
 ::C2ComponentFactory* V4L2ComponentStore::GetFactory(const C2String& name) {
     ALOGV("%s(%s)", __func__, name.c_str());
-
-    if (!V4L2ComponentName::isValid(name.c_str())) {
-        ALOGE("Invalid component name: %s", name.c_str());
-        return nullptr;
-    }
+    ALOG_ASSERT(V4L2ComponentName::isValid(name.c_str()));
 
     std::lock_guard<std::mutex> lock(mCachedFactoriesLock);
     const auto it = mCachedFactories.find(name);
