@@ -9,6 +9,7 @@ cc_library_shared {
     srcs: [
         "C2VdaBqBlockPool.cpp",
         "C2VdaPooledBlockPool.cpp",
+        "V4L2GraphicAllocator.cpp",
         "V4L2PluginStore.cpp",
         "VendorAllocatorLoader.cpp",
     ],
