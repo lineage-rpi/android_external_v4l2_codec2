@@ -9,10 +9,11 @@
 
 #include <time.h>
 
-#include <C2AllocatorGralloc.h>
 #include <C2BlockInternal.h>
 #include <bufferpool/BufferPoolTypes.h>
 #include <log/log.h>
+
+#include <v4l2_codec2/plugin_store/V4L2GraphicAllocator.h>
 
 namespace android {
 namespace {
@@ -30,22 +31,6 @@ int64_t GetNowUs() {
 }  // namespace
 
 using android::hardware::media::bufferpool::BufferPoolData;
-
-// static
-std::optional<uint32_t> C2VdaPooledBlockPool::getBufferIdFromGraphicBlock(const C2Block2D& block) {
-    std::shared_ptr<_C2BlockPoolData> blockPoolData =
-            _C2BlockFactory::GetGraphicBlockPoolData(block);
-    if (blockPoolData->getType() != _C2BlockPoolData::TYPE_BUFFERPOOL) {
-        ALOGE("Obtained C2GraphicBlock is not bufferpool-backed.");
-        return std::nullopt;
-    }
-    std::shared_ptr<BufferPoolData> bpData;
-    if (!_C2BlockFactory::GetBufferPoolData(blockPoolData, &bpData) || !bpData) {
-        ALOGE("BufferPoolData unavailable in block.");
-        return std::nullopt;
-    }
-    return bpData->mId;
-}
 
 // Tries to fetch a buffer from bufferpool. When the size of |mBufferIds| is smaller than
 // |mBufferCount|, pass the obtained buffer to caller and record its ID in BufferPoolData to
@@ -74,7 +59,8 @@ c2_status_t C2VdaPooledBlockPool::fetchGraphicBlock(uint32_t width, uint32_t hei
         return err;
     }
 
-    std::optional<uint32_t> bufferId = getBufferIdFromGraphicBlock(*fetchBlock);
+    std::optional<uint32_t> bufferId =
+            V4L2GraphicAllocator::getIdFromC2HandleWithId(fetchBlock->handle());
     if (!bufferId) {
         ALOGE("Failed to getBufferIdFromGraphicBlock");
         return C2_CORRUPTED;

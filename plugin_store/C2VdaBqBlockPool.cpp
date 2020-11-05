@@ -14,7 +14,6 @@
 #include <sstream>
 #include <thread>
 
-#include <C2AllocatorGralloc.h>
 #include <C2BlockInternal.h>
 #include <android/hardware/graphics/bufferqueue/2.0/IGraphicBufferProducer.h>
 #include <android/hardware/graphics/bufferqueue/2.0/IProducerListener.h>
@@ -25,6 +24,7 @@
 #include <ui/BufferQueueDefs.h>
 
 #include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
+#include <v4l2_codec2/plugin_store/V4L2GraphicAllocator.h>
 
 namespace android {
 namespace {
@@ -423,17 +423,6 @@ c2_status_t MarkBlockPoolDataAsShared(const C2ConstGraphicBlock& sharedBlock) {
     return C2_OK;
 }
 
-// static
-std::optional<uint32_t> C2VdaBqBlockPool::getBufferIdFromGraphicBlock(const C2Block2D& block) {
-    uint32_t width, height, format, stride, igbp_slot, generation;
-    uint64_t usage, igbp_id;
-    android::_UnwrapNativeCodec2GrallocMetadata(block.handle(), &width, &height, &format, &usage,
-                                                &stride, &generation, &igbp_id, &igbp_slot);
-    ALOGV("Unwrap Metadata: igbp[%" PRIu64 ", %u] (%u*%u, fmt %#x, usage %" PRIx64 ", stride %u)",
-          igbp_id, igbp_slot, width, height, format, usage, stride);
-    return igbp_slot;
-}
-
 class C2VdaBqBlockPool::Impl : public std::enable_shared_from_this<C2VdaBqBlockPool::Impl>,
                                public EventNotifier::Listener {
 public:
@@ -634,17 +623,17 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 
         // Convert GraphicBuffer to C2GraphicAllocation and wrap producer id and slot index
         ALOGV("buffer wraps { producer id: %" PRIu64 ", slot: %d }", mProducerId, slot);
-        C2Handle* c2Handle = android::WrapNativeCodec2GrallocHandle(
+        C2Handle* handleWithId = V4L2GraphicAllocator::WrapNativeHandleToC2HandleWithId(
                 slotBuffer->handle, slotBuffer->width, slotBuffer->height, slotBuffer->format,
                 slotBuffer->usage, slotBuffer->stride, slotBuffer->getGenerationNumber(),
                 mProducerId, slot);
-        if (!c2Handle) {
-            ALOGE("WrapNativeCodec2GrallocHandle failed");
+        if (!handleWithId) {
+            ALOGE("WrapNativeHandleToC2HandleWithId failed");
             return C2_NO_MEMORY;
         }
 
         std::shared_ptr<C2GraphicAllocation> alloc;
-        c2_status_t err = mAllocator->priorGraphicAllocation(c2Handle, &alloc);
+        c2_status_t err = mAllocator->priorGraphicAllocation(handleWithId, &alloc);
         if (err != C2_OK) {
             ALOGE("priorGraphicAllocation failed: %d", err);
             return err;
@@ -802,7 +791,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     }
 
     if (mProducer && mProducerId != producerId) {
-        ALOGI("Producer (Surface) is going to switch... ( %" PRIu64 " -> %" PRIu64 " )",
+        ALOGI("Producer (Surface) is going to switch... ( 0x%" PRIu64 " -> 0x%" PRIu64 " )",
               mProducerId, producerId);
         if (!switchProducer(newProducer.get(), producerId)) {
             return;
@@ -869,53 +858,52 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
     }
 
     // Attach all buffers to new producer.
-    int32_t slot;
     std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> newSlotAllocations;
     for (auto iter = mSlotAllocations.begin(); iter != mSlotAllocations.end(); ++iter) {
         // Convert C2GraphicAllocation to GraphicBuffer.
-        uint32_t width, height, format, stride, igbp_slot, generation;
-        uint64_t usage, igbp_id;
-        android::_UnwrapNativeCodec2GrallocMetadata(iter->second->handle(), &width, &height,
-                                                    &format, &usage, &stride, &generation, &igbp_id,
-                                                    &igbp_slot);
-        native_handle_t* grallocHandle =
-                android::UnwrapNativeCodec2GrallocHandle(iter->second->handle());
-
-        // Update generation number and usage.
+        const C2Handle* oldHandleWithId = iter->second->handle();
+        uint32_t uniqueId, width, height, format, stride, igbpSlot, generation;
+        uint64_t usage, igbpId;
+        native_handle_t* nativeHandle =
+                V4L2GraphicAllocator::UnwrapAndMoveC2HandleWithId2NativeHandle(
+                        oldHandleWithId, &uniqueId, &width, &height, &format, &usage, &stride,
+                        &generation, &igbpId, &igbpSlot);
         sp<GraphicBuffer> graphicBuffer =
-                new GraphicBuffer(grallocHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
+                new GraphicBuffer(nativeHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
                                   1, newUsage, stride);
+        native_handle_delete(nativeHandle);
         if (graphicBuffer->initCheck() != android::NO_ERROR) {
             ALOGE("Failed to create GraphicBuffer: %d", graphicBuffer->initCheck());
             return false;
         }
-        graphicBuffer->setGenerationNumber(newGeneration);
-        native_handle_delete(grallocHandle);
 
-        if (newProducer->attachBuffer(graphicBuffer, &slot) != android::NO_ERROR) {
+        // Update generation number and usage.
+        graphicBuffer->setGenerationNumber(newGeneration);
+        int32_t newSlot;
+        if (newProducer->attachBuffer(graphicBuffer, &newSlot) != android::NO_ERROR) {
             return false;
         }
-        // Convert back to C2GraphicAllocation wrapping new producer id, generation number, usage
-        // and slot index.
-        ALOGV("buffer wraps { producer id: %" PRIu64 ", slot: %d }", newProducerId, slot);
-        C2Handle* c2Handle = android::WrapNativeCodec2GrallocHandle(
-                graphicBuffer->handle, width, height, format, newUsage, stride, newGeneration,
-                newProducerId, slot);
-        if (!c2Handle) {
-            ALOGE("WrapNativeCodec2GrallocHandle failed");
+
+        // Migrate C2GraphicAllocation wrapping new usage, generation number, producer id, and
+        // slot index, and store it to |newSlotAllocations|.
+        ALOGV("buffer wraps { producer id: %" PRIu64 ", slot: %d }", newProducerId, newSlot);
+        C2Handle* migratedHandle = V4L2GraphicAllocator::MigrateC2HandleWithId(
+                oldHandleWithId, newUsage, newGeneration, newProducerId, newSlot);
+        if (!migratedHandle) {
+            ALOGE("MigrateC2HandleWithId() failed");
             return false;
         }
-        std::shared_ptr<C2GraphicAllocation> alloc;
-        c2_status_t err = mAllocator->priorGraphicAllocation(c2Handle, &alloc);
+
+        std::shared_ptr<C2GraphicAllocation> migratedAllocation;
+        c2_status_t err = mAllocator->priorGraphicAllocation(migratedHandle, &migratedAllocation);
         if (err != C2_OK) {
             ALOGE("priorGraphicAllocation failed: %d", err);
             return false;
         }
 
-        // Store to |newSlotAllocations| and also store old-to-new producer slot map.
         ALOGV("Transfered buffer from old producer to new, slot prev: %d -> new %d", iter->first,
-              slot);
-        newSlotAllocations[slot] = std::move(alloc);
+              newSlot);
+        newSlotAllocations.emplace(newSlot, std::move(migratedAllocation));
     }
 
     // Set allowAllocation to false if we track enough buffers, so that the producer does not

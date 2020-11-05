@@ -20,25 +20,11 @@
 #include <v4l2_codec2/plugin_store/C2VdaBqBlockPool.h>
 #include <v4l2_codec2/plugin_store/C2VdaPooledBlockPool.h>
 #include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
+#include <v4l2_codec2/plugin_store/V4L2GraphicAllocator.h>
 
 using android::hardware::graphics::common::V1_0::BufferUsage;
 
 namespace android {
-
-// static
-std::optional<uint32_t> VideoFramePool::getBufferIdFromGraphicBlock(const C2BlockPool& blockPool,
-                                                                    const C2Block2D& block) {
-    ALOGV("%s() blockPool.getAllocatorId() = %u", __func__, blockPool.getAllocatorId());
-
-    if (blockPool.getAllocatorId() == android::V4L2AllocatorId::V4L2_BUFFERPOOL) {
-        return C2VdaPooledBlockPool::getBufferIdFromGraphicBlock(block);
-    } else if (blockPool.getAllocatorId() == C2PlatformAllocatorStore::BUFFERQUEUE) {
-        return C2VdaBqBlockPool::getBufferIdFromGraphicBlock(block);
-    }
-
-    ALOGE("%s(): unknown allocator ID: %u", __func__, blockPool.getAllocatorId());
-    return std::nullopt;
-}
 
 // static
 c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount,
@@ -208,7 +194,8 @@ void VideoFramePool::getVideoFrameTask() {
     std::optional<FrameWithBlockId> frameWithBlockId;
     if (err == C2_OK) {
         ALOG_ASSERT(block != nullptr);
-        std::optional<uint32_t> bufferId = getBufferIdFromGraphicBlock(*mBlockPool, *block);
+        std::optional<uint32_t> bufferId =
+                V4L2GraphicAllocator::getIdFromC2HandleWithId(block->handle());
         std::unique_ptr<VideoFrame> frame = VideoFrame::Create(std::move(block));
         // Only pass the frame + id pair if both have successfully been obtained.
         // Otherwise exit the loop so a nullopt is passed to the client.

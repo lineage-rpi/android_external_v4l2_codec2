@@ -39,18 +39,6 @@ public:
     ~C2VdaBqBlockPool() override = default;
 
     /**
-     * Extracts slot index as pool ID from the graphic block.
-     *
-     * \note C2VdaBqBlockPool-specific function
-     *
-     * \param block  the graphic block allocated by bufferqueue block pool.
-     *
-     * Return the buffer's slot index in bufferqueue if extraction is successful.
-     * Otherwise return std::nullopt.
-     */
-    static std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
-
-    /**
      * It's a trick here. Return C2PlatformAllocatorStore::BUFFERQUEUE instead of the ID of backing
      * allocator for client's query. It's because in platform side this ID is recognized as
      * BufferQueue-backed block pool which is only allowed to set surface.

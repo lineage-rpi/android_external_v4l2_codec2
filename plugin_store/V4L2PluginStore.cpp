@@ -11,13 +11,13 @@
 #include <memory>
 #include <mutex>
 
-#include <C2AllocatorGralloc.h>
 #include <C2BufferPriv.h>
 #include <log/log.h>
 
 #include <v4l2_codec2/plugin_store/C2VdaBqBlockPool.h>
 #include <v4l2_codec2/plugin_store/C2VdaPooledBlockPool.h>
 #include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
+#include <v4l2_codec2/plugin_store/V4L2GraphicAllocator.h>
 #include <v4l2_codec2/plugin_store/VendorAllocatorLoader.h>
 
 namespace android {
@@ -32,8 +32,8 @@ C2Allocator* createAllocator(C2Allocator::id_t allocatorId) {
         return sAllocatorLoader->createAllocator(allocatorId);
     }
 
-    ALOGI("%s(): Fallback to create C2AllocatorGralloc (id=%u)", __func__, allocatorId);
-    return new C2AllocatorGralloc(allocatorId, true);
+    ALOGI("%s(): Fallback to create V4L2GraphicAllocator(id=%u)", __func__, allocatorId);
+    return new V4L2GraphicAllocator(allocatorId);
 }
 
 std::shared_ptr<C2Allocator> fetchAllocator(C2Allocator::id_t allocatorId) {

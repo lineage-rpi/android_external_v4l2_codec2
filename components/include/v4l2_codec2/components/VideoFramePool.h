@@ -59,11 +59,6 @@ private:
     void getVideoFrameTask();
     void onVideoFrameReady(std::optional<FrameWithBlockId> frameWithBlockId);
 
-    // Extracts buffer ID from graphic block.
-    // |block| is the graphic block allocated by |blockPool|.
-    static std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2BlockPool& blockPool,
-                                                               const C2Block2D& block);
-
     // Ask |blockPool| to allocate the specified number of buffers.
     // |bufferCount| is the number of requested buffers.
     static c2_status_t requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount,
