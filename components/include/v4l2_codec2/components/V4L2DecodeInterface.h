@@ -30,6 +30,8 @@ public:
     media::Size getMaxSize() const { return mMaxSize; }
     media::Size getMinSize() const { return mMinSize; }
 
+    static uint32_t getOutputDelay(VideoCodec codec);
+
     size_t getInputBufferSize() const;
     c2_status_t queryColorAspects(
             std::shared_ptr<C2StreamColorAspectsInfo::output>* targetColorAspects);

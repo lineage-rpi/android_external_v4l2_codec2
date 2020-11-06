@@ -3,7 +3,7 @@ cc_library {
     vendor: true,
 
     defaults: [
-        "libcodec2-impl-defaults",
+        "libcodec2-hidl-defaults",
     ],
 
     srcs: [

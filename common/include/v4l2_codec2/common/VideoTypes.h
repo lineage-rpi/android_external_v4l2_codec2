@@ -20,6 +20,9 @@ enum class VideoCodec {
 };
 const char* VideoCodecToString(VideoCodec codec);
 
+constexpr std::initializer_list<VideoCodec> kAllCodecs = {VideoCodec::H264, VideoCodec::VP8,
+                                                          VideoCodec::VP9};
+
 // Enumeration of supported pixel format. The value should be the same as
 // ::android::hardware::graphics::common::V1_0::PixelFormat.
 using HPixelFormat = ::android::hardware::graphics::common::V1_0::PixelFormat;

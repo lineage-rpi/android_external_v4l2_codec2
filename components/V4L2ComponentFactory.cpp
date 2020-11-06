@@ -9,6 +9,7 @@
 
 #include <C2ComponentFactory.h>
 #include <SimpleC2Interface.h>
+#include <codec2/hidl/1.0/InputBufferManager.h>
 #include <log/log.h>
 #include <util/C2InterfaceHelper.h>
 
@@ -47,6 +48,25 @@ V4L2ComponentFactory::V4L2ComponentFactory(const char* componentName, bool isEnc
         return;
     }
     mReflector = std::static_pointer_cast<C2ReflectorHelper>(componentStore->getParamReflector());
+
+    {
+        using namespace ::android::hardware::media::c2::V1_0;
+        // To minimize IPC, we generally want the codec2 framework to release and
+        // recycle input buffers when the corresponding work item is done. However,
+        // sometimes it is necessary to provide more input to unblock a decoder.
+        //
+        // Optimally we would configure this on a per-context basis. However, the
+        // InputBufferManager is a process-wide singleton, so we need to configure it
+        // pessimistically. Basing the interval on frame timing can be suboptimal if
+        // the decoded output isn't being displayed, but that's not a primary use case
+        // and few videos will actually rely on this behavior.
+        constexpr nsecs_t kMinFrameIntervalNs = 1000000000ull / 60;
+        uint32_t delayCount = 0;
+        for (auto c : kAllCodecs) {
+            delayCount = std::max(delayCount, V4L2DecodeInterface::getOutputDelay(c));
+        }
+        utils::InputBufferManager::setNotificationInterval(delayCount * kMinFrameIntervalNs / 2);
+    }
 }
 
 V4L2ComponentFactory::~V4L2ComponentFactory() = default;
