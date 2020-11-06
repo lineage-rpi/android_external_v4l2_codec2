@@ -579,15 +579,12 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 
     // Wait for acquire fence if we get one.
     if (fence) {
-        status_t fenceStatus = fence->wait(kFenceWaitTimeMs);
+        // The underlying sync-file kernel API guarantees that fences will
+        // be signaled in a relative short, finite time.
+        status_t fenceStatus = fence->waitForever(LOG_TAG);
         if (fenceStatus != android::NO_ERROR) {
             if (mProducer->cancelBuffer(slot, fence) != android::NO_ERROR) {
                 return C2_CORRUPTED;
-            }
-
-            if (fenceStatus == -ETIME) {  // fence wait timed out
-                ALOGV("%s(): buffer (slot=%d) fence wait timed out", __func__, slot);
-                return C2_TIMED_OUT;
             }
             ALOGE("buffer fence wait error: %d", fenceStatus);
             return asC2Error(fenceStatus);
