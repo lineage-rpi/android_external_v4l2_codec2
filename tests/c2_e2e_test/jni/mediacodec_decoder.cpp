@@ -78,12 +78,10 @@ int64_t RoundUp(int64_t n, int64_t multiple) {
 }  // namespace
 
 // static
-std::unique_ptr<MediaCodecDecoder> MediaCodecDecoder::Create(const std::string& input_path,
-                                                             VideoCodecProfile profile,
-                                                             bool use_sw_decoder,
-                                                             const Size& video_size, int frame_rate,
-                                                             ANativeWindow* surface,
-                                                             bool render_on_release, bool loop) {
+std::unique_ptr<MediaCodecDecoder> MediaCodecDecoder::Create(
+        const std::string& input_path, VideoCodecProfile profile, bool use_sw_decoder,
+        const Size& video_size, int frame_rate, ANativeWindow* surface, bool render_on_release,
+        bool loop, bool use_fake_renderer) {
     if (video_size.IsEmpty()) {
         ALOGE("Size is not valid: %dx%d", video_size.width, video_size.height);
         return nullptr;
@@ -114,7 +112,7 @@ std::unique_ptr<MediaCodecDecoder> MediaCodecDecoder::Create(const std::string& 
 
     auto ret = std::unique_ptr<MediaCodecDecoder>(
             new MediaCodecDecoder(codec, std::move(encoded_data_helper), type, video_size,
-                                  frame_rate, surface, render_on_release, loop));
+                                  frame_rate, surface, render_on_release, loop, use_fake_renderer));
 
     AMediaCodecOnAsyncNotifyCallback cb{
             .onAsyncInputAvailable =
@@ -152,7 +150,8 @@ std::unique_ptr<MediaCodecDecoder> MediaCodecDecoder::Create(const std::string& 
 MediaCodecDecoder::MediaCodecDecoder(AMediaCodec* codec,
                                      std::unique_ptr<EncodedDataHelper> encoded_data_helper,
                                      VideoCodecType type, const Size& size, int frame_rate,
-                                     ANativeWindow* surface, bool render_on_release, bool loop)
+                                     ANativeWindow* surface, bool render_on_release, bool loop,
+                                     bool use_fake_renderer)
       : codec_(codec),
         encoded_data_helper_(std::move(encoded_data_helper)),
         type_(type),
@@ -160,12 +159,17 @@ MediaCodecDecoder::MediaCodecDecoder(AMediaCodec* codec,
         frame_rate_(frame_rate),
         surface_(surface),
         render_on_release_(render_on_release),
-        looping_(loop) {}
+        looping_(loop),
+        fake_renderer_running_(use_fake_renderer),
+        fake_render_thread_([](MediaCodecDecoder* dec) { dec->FakeRenderLoop(); }, this) {}
 
 MediaCodecDecoder::~MediaCodecDecoder() {
     if (codec_ != nullptr) {
         AMediaCodec_delete(codec_);
     }
+    fake_renderer_running_ = false;
+    fake_render_cv_.notify_one();
+    fake_render_thread_.join();
 }
 
 void MediaCodecDecoder::AddOutputBufferReadyCb(const OutputBufferReadyCb& cb) {
@@ -248,6 +252,13 @@ bool MediaCodecDecoder::Decode() {
         case FORMAT_CHANGED:
             success = GetOutputFormat();
             break;
+        case FAKE_FRAME_RENDERED:
+            media_status_t status = AMediaCodec_releaseOutputBuffer(codec_, evt.idx, false);
+            if (status != AMEDIA_OK) {
+                ALOGE("Failed to releaseOutputBuffer(index=%zu): %d", evt.idx, status);
+                success = false;
+            }
+            break;
         }
         assert(success);
     }
@@ -289,8 +300,9 @@ bool MediaCodecDecoder::DequeueOutputBuffer(int32_t index, AMediaCodecBufferInfo
         base_timestamp_ns_ = now;
     } else if (now > GetReleaseTimestampNs(received_outputs_)) {
         drop_frame_count_++;
-        ALOGD("Drop frame #%d: deadline %" PRIu64 "us, actual %" PRIu64 "us", drop_frame_count_,
-              (received_outputs_ * 1000000 / frame_rate_), (now - base_timestamp_ns_) / 1000);
+        ALOGD("Drop frame #%d: frame %d deadline %" PRIu64 "us, actual %" PRIu64 "us",
+              drop_frame_count_, received_outputs_, (received_outputs_ * 1000000ull / frame_rate_),
+              (now - base_timestamp_ns_) / 1000);
         render_frame = false;  // We don't render the dropped frame.
     }
 
@@ -359,7 +371,7 @@ bool MediaCodecDecoder::FeedEOSInputBuffer(size_t index) {
     return true;
 }
 
-bool MediaCodecDecoder::ReceiveOutputBuffer(size_t index, const AMediaCodecBufferInfo& info,
+bool MediaCodecDecoder::ReceiveOutputBuffer(int32_t index, const AMediaCodecBufferInfo& info,
                                             bool render_buffer) {
     size_t out_size = 0;
     uint8_t* buf = nullptr;
@@ -381,15 +393,48 @@ bool MediaCodecDecoder::ReceiveOutputBuffer(size_t index, const AMediaCodecBuffe
             callback(buf, info.size, received_outputs_);
     }
 
-    media_status_t status =
-            render_buffer ? AMediaCodec_releaseOutputBufferAtTime(
-                                    codec_, index, GetReleaseTimestampNs(received_outputs_))
-                          : AMediaCodec_releaseOutputBuffer(codec_, index, false /* render */);
-    if (status != AMEDIA_OK) {
-        ALOGE("Failed to releaseOutputBuffer(index=%zu): %d", index, status);
-        return false;
+    if (fake_renderer_running_) {
+        std::lock_guard<std::mutex> lock(fake_render_mut_);
+        fake_render_frames_.emplace(index, GetReleaseTimestampNs(received_outputs_));
+        fake_render_cv_.notify_one();
+    } else {
+        media_status_t status =
+                render_buffer ? AMediaCodec_releaseOutputBufferAtTime(
+                                        codec_, index, GetReleaseTimestampNs(received_outputs_))
+                              : AMediaCodec_releaseOutputBuffer(codec_, index, false /* render */);
+        if (status != AMEDIA_OK) {
+            ALOGE("Failed to releaseOutputBuffer(index=%zu): %d", index, status);
+            return false;
+        }
     }
     return true;
+}
+
+void MediaCodecDecoder::FakeRenderLoop() {
+    while (fake_renderer_running_) {
+        std::pair<int32_t, int64_t> next_frame;
+        {
+            std::unique_lock<std::mutex> lock(fake_render_mut_);
+            fake_render_cv_.wait(lock, [&]() {
+                return !fake_renderer_running_ || !fake_render_frames_.empty();
+            });
+            if (!fake_renderer_running_) {
+                break;
+            }
+
+            next_frame = fake_render_frames_.front();
+            fake_render_frames_.pop();
+        }
+
+        const uint64_t now = GetCurrentTimeNs();
+        if (now < next_frame.second) {
+            usleep((next_frame.second - now) / 1000);
+        }
+
+        std::lock_guard<std::mutex> lock(event_queue_mut_);
+        event_queue_.push({.type = FAKE_FRAME_RENDERED, .idx = next_frame.first});
+        event_queue_cv_.notify_one();
+    }
 }
 
 bool MediaCodecDecoder::GetOutputFormat() {
