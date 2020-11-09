@@ -877,9 +877,8 @@ bool V4L2EncodeComponent::updateEncodingParameters() {
         ALOGV("Setting bitrate to %u", bitrate);
         if (!mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG,
                                   {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_BITRATE, bitrate)})) {
-            // TODO(b/161495749): V4L2_CID_MPEG_VIDEO_BITRATE is currently not supported yet, assume
-            // the operation was successful for now.
-            ALOGW("Requesting bitrate change failed");
+            ALOGE("Requesting bitrate change failed");
+            return false;
         }
         mBitrate = bitrate;
     }
