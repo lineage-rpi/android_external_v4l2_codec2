@@ -616,7 +616,6 @@ bool V4L2EncodeComponent::initializeEncoder() {
     if (!configureInputFormat(kInputPixelFormat)) return false;
 
     // Create input and output buffers.
-    // TODO(dstaessens): Avoid allocating output buffers, encode directly into blockpool buffers.
     if (!createInputBuffers() || !createOutputBuffers()) return false;
 
     // Configure the device, setting all required controls.
