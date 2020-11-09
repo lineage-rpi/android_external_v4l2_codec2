@@ -686,6 +686,18 @@ bool V4L2EncodeComponent::configureInputFormat(media::VideoPixelFormat inputForm
     // TODO(dstaessens): How is this different from mInputLayout->coded_size()?
     mInputCodedSize = media::V4L2Device::AllocatedSizeFromV4L2Format(*format);
 
+    // Configuring the input format might cause the output buffer size to change.
+    auto outputFormat = mOutputQueue->GetFormat();
+    if (!outputFormat.first) {
+        ALOGE("Failed to get output format (errno: %i)", outputFormat.second);
+        return false;
+    }
+    uint32_t AdjustedOutputBufferSize = outputFormat.first->fmt.pix_mp.plane_fmt[0].sizeimage;
+    if (mOutputBufferSize != AdjustedOutputBufferSize) {
+        mOutputBufferSize = AdjustedOutputBufferSize;
+        ALOGV("Output buffer size adjusted to: %u", mOutputBufferSize);
+    }
+
     // Add an input format convertor if the device doesn't support the requested input format.
     // Note: The amount of input buffers in the convertor should match the amount of buffers on the
     // device input queue, to simplify logic.
@@ -765,7 +777,7 @@ bool V4L2EncodeComponent::configureOutputFormat(media::VideoCodecProfile outputP
     }
 
     // The device might adjust the requested output buffer size to match hardware requirements.
-    mOutputBufferSize = ::base::checked_cast<size_t>(format->fmt.pix_mp.plane_fmt[0].sizeimage);
+    mOutputBufferSize = format->fmt.pix_mp.plane_fmt[0].sizeimage;
 
     ALOGV("Output format set to %s (buffer size: %u)", media::GetProfileName(outputProfile).c_str(),
           mOutputBufferSize);
