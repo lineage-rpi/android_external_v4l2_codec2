@@ -48,6 +48,22 @@
 
 namespace media {
 
+struct v4l2_format BuildV4L2Format(const enum v4l2_buf_type type,
+                                   uint32_t fourcc,
+                                   const Size& size,
+                                   size_t buffer_size) {
+  struct v4l2_format format;
+  memset(&format, 0, sizeof(format));
+  format.type = type;
+  format.fmt.pix_mp.pixelformat = fourcc;
+  format.fmt.pix_mp.width = size.width();
+  format.fmt.pix_mp.height = size.height();
+  format.fmt.pix_mp.num_planes = V4L2Device::GetNumPlanesOfV4L2PixFmt(fourcc);
+  format.fmt.pix_mp.plane_fmt[0].sizeimage = buffer_size;
+
+  return format;
+}
+
 V4L2ExtCtrl::V4L2ExtCtrl(uint32_t id) {
   memset(&ctrl, 0, sizeof(ctrl));
   ctrl.id = id;
@@ -751,23 +767,42 @@ V4L2Queue::~V4L2Queue() {
 base::Optional<struct v4l2_format> V4L2Queue::SetFormat(uint32_t fourcc,
                                                         const Size& size,
                                                         size_t buffer_size) {
-  struct v4l2_format format;
-  memset(&format, 0, sizeof(format));
-  format.type = type_;
-  format.fmt.pix_mp.pixelformat = fourcc;
-  format.fmt.pix_mp.width = size.width();
-  format.fmt.pix_mp.height = size.height();
-  format.fmt.pix_mp.num_planes = V4L2Device::GetNumPlanesOfV4L2PixFmt(fourcc);
-  format.fmt.pix_mp.plane_fmt[0].sizeimage = buffer_size;
+  struct v4l2_format format = BuildV4L2Format(type_, fourcc, size, buffer_size);
   if (device_->Ioctl(VIDIOC_S_FMT, &format) != 0 ||
       format.fmt.pix_mp.pixelformat != fourcc) {
-    VPQLOGF(2) << "Failed to set format on queue " << type_
-               << ". format_fourcc=0x" << std::hex << fourcc;
+    VPQLOGF(2) << "Failed to set format (format_fourcc=0x" << std::hex << fourcc
+               << ")";
     return base::nullopt;
   }
 
   current_format_ = format;
   return current_format_;
+}
+
+base::Optional<struct v4l2_format> V4L2Queue::TryFormat(uint32_t fourcc,
+                                                        const Size& size,
+                                                        size_t buffer_size) {
+  struct v4l2_format format = BuildV4L2Format(type_, fourcc, size, buffer_size);
+  if (device_->Ioctl(VIDIOC_TRY_FMT, &format) != 0 ||
+      format.fmt.pix_mp.pixelformat != fourcc) {
+    VPQLOGF(2) << "Tried format not supported (format_fourcc=0x" << std::hex
+               << fourcc << ")";
+    return base::nullopt;
+  }
+
+  return format;
+}
+
+std::pair<base::Optional<struct v4l2_format>, int> V4L2Queue::GetFormat() {
+  struct v4l2_format format;
+  memset(&format, 0, sizeof(format));
+  format.type = type_;
+  if (device_->Ioctl(VIDIOC_G_FMT, &format) != 0) {
+    VPQLOGF(2) << "Failed to get format";
+    return std::make_pair(base::nullopt, errno);
+  }
+
+  return std::make_pair(format, 0);
 }
 
 size_t V4L2Queue::AllocateBuffers(size_t count, enum v4l2_memory memory) {
