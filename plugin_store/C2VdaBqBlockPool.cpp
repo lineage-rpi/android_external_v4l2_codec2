@@ -460,6 +460,9 @@ private:
         C2AndroidMemoryUsage mUsage = C2MemoryUsage(0);
     };
 
+    status_t getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
+                               C2MemoryUsage usage, int32_t* slot, sp<Fence>* fence);
+
     // For C2VdaBqBlockPoolData to detach corresponding slot buffer from BufferQueue.
     void detachBuffer(uint64_t producerId, int32_t slotId);
 
@@ -542,54 +545,13 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         mPendingBuffersRequested = false;
     }
 
-    C2AndroidMemoryUsage androidUsage = usage;
-    uint32_t pixelFormat = format;
     int32_t slot;
     sp<Fence> fence = new Fence();
-    status_t status =
-            mProducer->dequeueBuffer(width, height, pixelFormat, androidUsage, &slot, &fence);
-    // The C2VdaBqBlockPool does not fully own the bufferqueue. After buffers are dequeued here,
-    // they are passed into the codec2 framework, processed, and eventually queued into the
-    // bufferqueue. The C2VdaBqBlockPool cannot determine exactly when a buffer gets queued.
-    // However, if every buffer is being processed by the codec2 framework, then dequeueBuffer()
-    // will return INVALID_OPERATION because of an attempt to dequeue too many buffers.
-    // The C2VdaBqBlockPool cannot prevent this from happening, so just map it to TIMED_OUT
-    // and let the C2VdaBqBlockPool's caller's timeout retry logic handle the failure.
-    if (status == android::INVALID_OPERATION) {
-        status = android::TIMED_OUT;
-    }
-    if (status == android::TIMED_OUT) {
-        std::lock_guard<std::mutex> lock(mBufferReleaseMutex);
-        mBufferReleasedAfterTimedOut = false;
-    }
-    if (status != android::NO_ERROR && status != BUFFER_NEEDS_REALLOCATION) {
+    status_t status = getFreeSlotLocked(width, height, format, usage, &slot, &fence);
+    if (status != android::NO_ERROR) {
         return asC2Error(status);
     }
 
-    // Wait for acquire fence if we get one.
-    if (fence) {
-        // The underlying sync-file kernel API guarantees that fences will
-        // be signaled in a relative short, finite time.
-        status_t fenceStatus = fence->waitForever(LOG_TAG);
-        if (fenceStatus != android::NO_ERROR) {
-            if (mProducer->cancelBuffer(slot, fence) != android::NO_ERROR) {
-                return C2_CORRUPTED;
-            }
-            ALOGE("buffer fence wait error: %d", fenceStatus);
-            return asC2Error(fenceStatus);
-        }
-
-        if (mRenderCallback) {
-            nsecs_t signalTime = fence->getSignalTime();
-            if (signalTime >= 0 && signalTime < INT64_MAX) {
-                mRenderCallback(mProducerId, slot, signalTime);
-            } else {
-                ALOGV("got fence signal time of %" PRId64 " nsec", signalTime);
-            }
-        }
-    }
-
-    ALOGV("%s(%ux%u): dequeued slot=%d", __func__, width, height, slot);
     auto iter = mSlotAllocations.find(slot);
     if (iter == mSlotAllocations.end()) {
         if (mSlotAllocations.size() >= mBuffersRequested) {
@@ -663,6 +625,59 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         return C2_NO_MEMORY;
     }
     return C2_OK;
+}
+
+status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
+                                                   C2MemoryUsage usage, int32_t* slot,
+                                                   sp<Fence>* fence) {
+    // Dequeue a free slot from IGBP.
+    ALOGV("%s(): try to dequeue free slot from IGBP.", __func__);
+    status_t status = mProducer->dequeueBuffer(width, height, format, usage, slot, fence);
+    // The C2VdaBqBlockPool does not fully own the bufferqueue. After buffers are dequeued here,
+    // they are passed into the codec2 framework, processed, and eventually queued into the
+    // bufferqueue. The C2VdaBqBlockPool cannot determine exactly when a buffer gets queued.
+    // However, if every buffer is being processed by the codec2 framework, then dequeueBuffer()
+    // will return INVALID_OPERATION because of an attempt to dequeue too many buffers.
+    // The C2VdaBqBlockPool cannot prevent this from happening, so just map it to TIMED_OUT
+    // and let the C2VdaBqBlockPool's caller's timeout retry logic handle the failure.
+    if (status == android::INVALID_OPERATION) {
+        status = android::TIMED_OUT;
+    }
+    if (status == android::TIMED_OUT) {
+        std::lock_guard<std::mutex> lock(mBufferReleaseMutex);
+        mBufferReleasedAfterTimedOut = false;
+    }
+    if (status != android::NO_ERROR && status != BUFFER_NEEDS_REALLOCATION) {
+        return status;
+    }
+
+    // Wait for acquire fence if we get one.
+    if (*fence) {
+        // The underlying sync-file kernel API guarantees that fences will
+        // be signaled in a relative short, finite time.
+        status_t fenceStatus = (*fence)->waitForever(LOG_TAG);
+        if (fenceStatus != android::NO_ERROR) {
+            status_t cancelStatus = mProducer->cancelBuffer(*slot, *fence);
+            if (cancelStatus != android::NO_ERROR) {
+                return cancelStatus;
+            }
+            ALOGE("buffer fence wait error: %d", fenceStatus);
+            return fenceStatus;
+        }
+
+        if (mRenderCallback) {
+            nsecs_t signalTime = (*fence)->getSignalTime();
+            if (signalTime >= 0 && signalTime < INT64_MAX) {
+                mRenderCallback(mProducerId, *slot, signalTime);
+            } else {
+                ALOGV("got fence signal time of %" PRId64 " nsec", signalTime);
+            }
+        }
+    }
+
+    ALOGV("%s(%ux%u): dequeued slot=%d", __func__, mBufferFormat.mWidth, mBufferFormat.mHeight,
+          *slot);
+    return android::NO_ERROR;
 }
 
 void C2VdaBqBlockPool::Impl::onEventNotified() {
