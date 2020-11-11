@@ -423,6 +423,101 @@ c2_status_t MarkBlockPoolDataAsShared(const C2ConstGraphicBlock& sharedBlock) {
     return C2_OK;
 }
 
+// Used to store the tracked graphic buffers requestsed from IGBP. This class keeps the
+// bidirectional mapping between unique ID of the buffer and IGBP slot, and the
+// mapping from IGBP slot to C2Allocation.
+class TrackedGraphicBuffers {
+public:
+    using value_type = std::tuple<int32_t /* slotId */, uint32_t /* uniqueId */,
+                                  std::shared_ptr<C2GraphicAllocation> /* allocation */>;
+
+    TrackedGraphicBuffers() = default;
+    ~TrackedGraphicBuffers() = default;
+
+    bool insert(int32_t slotId, uint32_t uniqueId,
+                std::shared_ptr<C2GraphicAllocation> allocation) {
+        ALOGV("%s(slotId=%d, uniqueId=%u)", __func__, slotId, uniqueId);
+        ALOG_ASSERT(allocation != nullptr);
+
+        if (!mUniqueId2SlotId.emplace(uniqueId, slotId).second) {
+            ALOGE("%s(): duplicate uniqueId %u", __func__, uniqueId);
+            return false;
+        }
+        if (!mSlotId2UniqueId.emplace(slotId, uniqueId).second) {
+            ALOGE("%s(): duplicate slotId %u", __func__, uniqueId);
+            mUniqueId2SlotId.erase(uniqueId);
+            return false;
+        }
+        mSlotId2Allocation.emplace(slotId, std::move(allocation));
+        return true;
+    }
+
+    value_type pop() {
+        ALOG_ASSERT(size() > 0);
+
+        auto idIter = mSlotId2UniqueId.begin();
+        ALOG_ASSERT(idIter != mSlotId2UniqueId.end());
+        int32_t slotId = idIter->first;
+        uint32_t uniqueId = idIter->second;
+        mSlotId2UniqueId.erase(idIter);
+        mUniqueId2SlotId.erase(uniqueId);
+
+        auto allocIter = mSlotId2Allocation.find(slotId);
+        ALOG_ASSERT(allocIter != mSlotId2Allocation.end());
+        std::shared_ptr<C2GraphicAllocation> allocation = allocIter->second;
+        mSlotId2Allocation.erase(allocIter);
+
+        return std::make_tuple(slotId, uniqueId, std::move(allocation));
+    }
+
+    void clear() {
+        ALOGV("%s(): current size = %zu", __func__, size());
+
+        mUniqueId2SlotId.clear();
+        mSlotId2UniqueId.clear();
+        mSlotId2Allocation.clear();
+    }
+
+    size_t size() const { return mUniqueId2SlotId.size(); }
+
+    bool hasUniqueId(uint32_t uniqueId) const {
+        return mUniqueId2SlotId.find(uniqueId) != mUniqueId2SlotId.end();
+    }
+
+    bool hasSlotId(int32_t slotId) const {
+        return mSlotId2UniqueId.find(slotId) != mSlotId2UniqueId.end();
+    }
+
+    uint32_t getUniqueId(int32_t slotId) const {
+        auto iter = mSlotId2UniqueId.find(slotId);
+        ALOG_ASSERT(iter != mSlotId2UniqueId.end());
+        return iter->second;
+    }
+
+    int32_t getSlotId(uint32_t uniqueId) const {
+        auto iter = mUniqueId2SlotId.find(uniqueId);
+        ALOG_ASSERT(iter != mUniqueId2SlotId.end());
+        return iter->second;
+    }
+
+    std::shared_ptr<C2GraphicAllocation> getAllocation(int32_t slotId) const {
+        auto iter = mSlotId2Allocation.find(slotId);
+        ALOG_ASSERT(iter != mSlotId2Allocation.end());
+        return iter->second;
+    }
+
+    std::string debugString() const {
+        std::stringstream ss;
+        for (const auto& slot : mSlotId2UniqueId) ss << slot.first << ", ";
+        return ss.str();
+    }
+
+private:
+    std::map<int32_t, uint32_t> mSlotId2UniqueId;
+    std::map<uint32_t, int32_t> mUniqueId2SlotId;
+    std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> mSlotId2Allocation;
+};
+
 class C2VdaBqBlockPool::Impl : public std::enable_shared_from_this<C2VdaBqBlockPool::Impl>,
                                public EventNotifier::Listener {
 public:
@@ -486,8 +581,7 @@ private:
     // synchronization of all member variables.
     std::mutex mMutex;
 
-    // The map restored C2GraphicAllocation from corresponding slot index.
-    std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> mSlotAllocations;
+    TrackedGraphicBuffers mTrackedGraphicBuffers;
     // Number of buffers requested on requestNewBufferSet() call.
     size_t mBuffersRequested = 0u;
     // Set to true when we need to call IGBP::setMaxDequeuedBufferCount() at next fetching buffer.
@@ -552,9 +646,8 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         return asC2Error(status);
     }
 
-    auto iter = mSlotAllocations.find(slot);
-    if (iter == mSlotAllocations.end()) {
-        if (mSlotAllocations.size() >= mBuffersRequested) {
+    if (!mTrackedGraphicBuffers.hasSlotId(slot)) {
+        if (mTrackedGraphicBuffers.size() >= mBuffersRequested) {
             // The dequeued slot has a pre-allocated buffer whose size and format is as same as
             // currently requested (but was not dequeued during allocation cycle). Just detach it to
             // free this slot. And try dequeueBuffer again.
@@ -594,6 +687,12 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             return C2_NO_MEMORY;
         }
 
+        std::optional<uint32_t> uniqueId =
+                V4L2GraphicAllocator::getIdFromC2HandleWithId(handleWithId);
+        ALOG_ASSERT(uniqueId, "Failed to get uniqueId from handleWithId");
+        ALOGV("%s(): buffer %u wraps { producerId: %" PRIu64 ", slot: %d }", __func__, *uniqueId,
+              mProducerId, slot);
+
         std::shared_ptr<C2GraphicAllocation> alloc;
         c2_status_t err = mAllocator->priorGraphicAllocation(handleWithId, &alloc);
         if (err != C2_OK) {
@@ -601,14 +700,10 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             return err;
         }
 
-        mSlotAllocations[slot] = std::move(alloc);
-        if (mSlotAllocations.size() == mBuffersRequested) {
-#ifdef LOG_NDEBUG
-            std::stringstream ss;
-            for (const auto& slot : mSlotAllocations) ss << slot.first << ", ";
-            ALOGV("Tracked IGBP slots: %s", ss.str().c_str());
-#endif  // LOG_NDEBUG
-
+        mTrackedGraphicBuffers.insert(slot, *uniqueId, std::move(alloc));
+        ALOGV("%s(): mTrackedGraphicBuffers.size=%zu", __func__, mTrackedGraphicBuffers.size());
+        if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
+            ALOGV("Tracked IGBP slots: %s", mTrackedGraphicBuffers.debugString().c_str());
             // Already allocated enough buffers, set allowAllocation to false to restrict the
             // eligible slots to allocated ones for future dequeue.
             status = mProducer->allowAllocation(false);
@@ -618,8 +713,10 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         }
     }
 
+    ALOG_ASSERT(mTrackedGraphicBuffers.hasSlotId(slot));
+    std::shared_ptr<C2GraphicAllocation> allocation = mTrackedGraphicBuffers.getAllocation(slot);
     auto poolData = std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, shared_from_this());
-    *block = _C2BlockFactory::CreateGraphicBlock(mSlotAllocations[slot], std::move(poolData));
+    *block = _C2BlockFactory::CreateGraphicBlock(std::move(allocation), std::move(poolData));
     if (*block == nullptr) {
         ALOGE("failed to create GraphicBlock: no memory");
         return C2_NO_MEMORY;
@@ -781,7 +878,7 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
 
     // Release all remained slot buffer references here. CCodec should either cancel or queue its
     // owned buffers from this set before the next resolution change.
-    mSlotAllocations.clear();
+    mTrackedGraphicBuffers.clear();
     mBuffersRequested = static_cast<size_t>(bufferCount);
     mPendingBuffersRequested = true;
 
@@ -812,7 +909,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
             return;
         }
     } else {
-        mSlotAllocations.clear();
+        mTrackedGraphicBuffers.clear();
     }
 
     if (newProducer->setDequeueTimeout(0) != android::NO_ERROR) {
@@ -845,13 +942,12 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
     // Just like requestNewBufferSet(), maxDequeuedBufferCount should be set to "requested buffer
     // count" + "buffer count in client" to make sure it has enough available slots to request
     // buffers from.
-    // "Requested buffer count" could be obtained by the size of |mSlotAllocations|. However, it is
-    // not able to know "buffer count in client" in blockpool's aspect. The alternative solution is
-    // to set the worse case first, which is equal to the size of |mSlotAllocations|. And in the end
-    // of updateGraphicBlock() routine, we could get the arbitrary "buffer count in client" by
-    // counting the calls of updateGraphicBlock(willCancel=true). Then we set maxDequeuedBufferCount
-    // again to the correct value.
-    if (newProducer->setMaxDequeuedBufferCount(mSlotAllocations.size() * 2) != android::NO_ERROR) {
+    // "Requested buffer count" could be obtained by the size of |mTrackedGraphicBuffers|. However,
+    // it is not able to know "buffer count in client" in blockpool's aspect. The alternative
+    // solution is to set the worse case first, which is equal to the size of
+    // |mTrackedGraphicBuffers|.
+    if (newProducer->setMaxDequeuedBufferCount(mTrackedGraphicBuffers.size() * 2) !=
+        android::NO_ERROR) {
         return false;
     }
 
@@ -872,17 +968,28 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
         return false;
     }
 
-    // Attach all buffers to new producer.
-    std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> newSlotAllocations;
-    for (auto iter = mSlotAllocations.begin(); iter != mSlotAllocations.end(); ++iter) {
+    TrackedGraphicBuffers newTrackedGraphicBuffers;
+    while (mTrackedGraphicBuffers.size() > 0) {
+        int32_t oldSlotId;
+        uint32_t oldUniqueId;
+        std::shared_ptr<C2GraphicAllocation> allocation;
+        std::tie(oldSlotId, oldUniqueId, allocation) = mTrackedGraphicBuffers.pop();
+
+        // Try to detach buffer from old producer.
+        status_t status = mProducer->detachBuffer(oldSlotId);
+        if (status != android::NO_ERROR) {
+            ALOGW("detachBuffer slot=%d from old producer failed: %d", oldSlotId, status);
+        }
+
         // Convert C2GraphicAllocation to GraphicBuffer.
-        const C2Handle* oldHandleWithId = iter->second->handle();
+        const C2Handle* oldHandleWithId = allocation->handle();
         uint32_t uniqueId, width, height, format, stride, igbpSlot, generation;
         uint64_t usage, igbpId;
         native_handle_t* nativeHandle =
                 V4L2GraphicAllocator::UnwrapAndMoveC2HandleWithId2NativeHandle(
                         oldHandleWithId, &uniqueId, &width, &height, &format, &usage, &stride,
                         &generation, &igbpId, &igbpSlot);
+        ALOG_ASSERT(oldUniqueId == uniqueId);
         sp<GraphicBuffer> graphicBuffer =
                 new GraphicBuffer(nativeHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
                                   1, newUsage, stride);
@@ -916,31 +1023,22 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
             return false;
         }
 
-        ALOGV("Transfered buffer from old producer to new, slot prev: %d -> new %d", iter->first,
+        ALOGV("Transfered buffer from old producer to new, slot prev: %d -> new %d", oldSlotId,
               newSlot);
-        newSlotAllocations.emplace(newSlot, std::move(migratedAllocation));
+        newTrackedGraphicBuffers.insert(newSlot, uniqueId, std::move(migratedAllocation));
     }
 
     // Set allowAllocation to false if we track enough buffers, so that the producer does not
     // allocate new buffers. Otherwise allocation will be disabled in fetchGraphicBlock after enough
     // buffers have been allocated.
-    if (newSlotAllocations.size() == mBuffersRequested) {
+    if (newTrackedGraphicBuffers.size() == mBuffersRequested) {
         if (newProducer->allowAllocation(false) != android::NO_ERROR) {
             ALOGE("allowAllocation(false) failed");
             return false;
         }
     }
 
-    // Try to detach all buffers from old producer.
-    for (const auto& slotAllocation : mSlotAllocations) {
-        status_t status = mProducer->detachBuffer(slotAllocation.first);
-        if (status != android::NO_ERROR) {
-            ALOGW("detachBuffer slot=%d from old producer failed: %d", slotAllocation.first,
-                  status);
-        }
-    }
-
-    mSlotAllocations = std::move(newSlotAllocations);
+    mTrackedGraphicBuffers = std::move(newTrackedGraphicBuffers);
     return true;
 }
 
