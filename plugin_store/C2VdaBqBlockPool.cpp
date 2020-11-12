@@ -463,8 +463,8 @@ private:
     status_t getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
                                C2MemoryUsage usage, int32_t* slot, sp<Fence>* fence);
 
-    // For C2VdaBqBlockPoolData to detach corresponding slot buffer from BufferQueue.
-    void detachBuffer(uint64_t producerId, int32_t slotId);
+    // Called when C2GraphicBlock and its C2VdaBqBlockPoolData are released.
+    void onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId, bool shared);
 
     // Queries the generation and usage flags from the given producer by dequeuing and requesting a
     // buffer (the buffer is then detached and freed).
@@ -944,19 +944,15 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
     return true;
 }
 
-void C2VdaBqBlockPool::Impl::detachBuffer(uint64_t producerId, int32_t slotId) {
-    ALOGV("detachBuffer: producer id = %" PRIx64 ", slot = %d", producerId, slotId);
+void C2VdaBqBlockPool::Impl::onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId,
+                                                      bool shared) {
+    ALOGV("%s(producerId=%" PRIx64 ", slotId=%u, shared=%d)", __func__, producerId, slotId, shared);
     std::lock_guard<std::mutex> lock(mMutex);
-    if (producerId == mProducerId && mProducer) {
-        if (mProducer->detachBuffer(slotId) != android::NO_ERROR) {
-            return;
-        }
 
-        auto it = mSlotAllocations.find(slotId);
-        // It may happen that the slot is not included in |mSlotAllocations|, which means it is
-        // released after resolution change.
-        if (it != mSlotAllocations.end()) {
-            mSlotAllocations.erase(it);
+    if (!shared && mProducer && producerId == mProducerId) {
+        sp<Fence> fence = new Fence();
+        if (mProducer->cancelBuffer(slotId, fence) != android::NO_ERROR) {
+            ALOGW("%s(): Failed to cancelBuffer()", __func__);
         }
     }
 }
@@ -1034,10 +1030,11 @@ C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId,
       : mProducerId(producerId), mSlotId(slotId), mPool(pool) {}
 
 C2VdaBqBlockPoolData::~C2VdaBqBlockPoolData() {
-    if (mShared || !mPool) {
+    if (!mPool) {
         return;
     }
-    mPool->detachBuffer(mProducerId, mSlotId);
+
+    mPool->onC2GraphicBlockReleased(mProducerId, mSlotId, mShared);
 }
 
 }  // namespace android
