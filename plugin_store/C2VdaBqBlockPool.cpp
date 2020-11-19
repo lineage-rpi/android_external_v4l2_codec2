@@ -11,6 +11,7 @@
 
 #include <chrono>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <thread>
 
@@ -391,7 +392,7 @@ struct C2VdaBqBlockPoolData : public _C2BlockPoolData {
     // This type should be a different value than what _C2BlockPoolData::type_t has defined.
     static constexpr int kTypeVdaBufferQueue = TYPE_BUFFERQUEUE + 256;
 
-    C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId,
+    C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
                          const std::shared_ptr<C2VdaBqBlockPool::Impl>& pool);
     C2VdaBqBlockPoolData() = delete;
 
@@ -403,6 +404,7 @@ struct C2VdaBqBlockPoolData : public _C2BlockPoolData {
     bool mShared = false;  // whether is shared from component to client.
     const uint64_t mProducerId;
     const int32_t mSlotId;
+    const uint32_t mUniqueId;
     const std::shared_ptr<C2VdaBqBlockPool::Impl> mPool;
 };
 
@@ -559,7 +561,8 @@ private:
                                C2MemoryUsage usage, int32_t* slot, sp<Fence>* fence);
 
     // Called when C2GraphicBlock and its C2VdaBqBlockPoolData are released.
-    void onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId, bool shared);
+    void onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
+                                  bool shared);
 
     // Queries the generation and usage flags from the given producer by dequeuing and requesting a
     // buffer (the buffer is then detached and freed).
@@ -588,6 +591,9 @@ private:
     bool mPendingBuffersRequested = false;
     // Currently requested buffer formats.
     BufferFormat mBufferFormat;
+
+    // The unique ids of the buffers owned by V4L2DecodeComponent.
+    std::set<uint32_t> mComponentOwnedUniquedIds;
 
     // Listener for buffer release events.
     sp<EventNotifier> mFetchBufferNotifier;
@@ -715,12 +721,15 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 
     ALOG_ASSERT(mTrackedGraphicBuffers.hasSlotId(slot));
     std::shared_ptr<C2GraphicAllocation> allocation = mTrackedGraphicBuffers.getAllocation(slot);
-    auto poolData = std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, shared_from_this());
+    const uint32_t uniqueId = mTrackedGraphicBuffers.getUniqueId(slot);
+    auto poolData =
+            std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, uniqueId, shared_from_this());
     *block = _C2BlockFactory::CreateGraphicBlock(std::move(allocation), std::move(poolData));
     if (*block == nullptr) {
         ALOGE("failed to create GraphicBlock: no memory");
         return C2_NO_MEMORY;
     }
+    mComponentOwnedUniquedIds.insert(uniqueId);
     return C2_OK;
 }
 
@@ -1043,9 +1052,12 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
 }
 
 void C2VdaBqBlockPool::Impl::onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId,
-                                                      bool shared) {
-    ALOGV("%s(producerId=%" PRIx64 ", slotId=%u, shared=%d)", __func__, producerId, slotId, shared);
+                                                      uint32_t uniqueId, bool shared) {
+    ALOGV("%s(producerId=%" PRIx64 ", slotId=%d, uniqueId=%u shared=%d)", __func__, producerId,
+          slotId, uniqueId, shared);
     std::lock_guard<std::mutex> lock(mMutex);
+
+    mComponentOwnedUniquedIds.erase(uniqueId);
 
     if (!shared && mProducer && producerId == mProducerId) {
         sp<Fence> fence = new Fence();
@@ -1123,16 +1135,16 @@ bool C2VdaBqBlockPool::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
     return false;
 }
 
-C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId,
+C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
                                            const std::shared_ptr<C2VdaBqBlockPool::Impl>& pool)
-      : mProducerId(producerId), mSlotId(slotId), mPool(pool) {}
+      : mProducerId(producerId), mSlotId(slotId), mUniqueId(uniqueId), mPool(pool) {}
 
 C2VdaBqBlockPoolData::~C2VdaBqBlockPoolData() {
     if (!mPool) {
         return;
     }
 
-    mPool->onC2GraphicBlockReleased(mProducerId, mSlotId, mShared);
+    mPool->onC2GraphicBlockReleased(mProducerId, mSlotId, mUniqueId, mShared);
 }
 
 }  // namespace android
