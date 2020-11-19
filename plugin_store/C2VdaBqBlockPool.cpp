@@ -571,13 +571,16 @@ private:
                                         C2AndroidMemoryUsage androidUsage, uint32_t* generation,
                                         uint64_t* usage);
 
+    // Detaches all the tracked buffers from |mProducer|, and returns all the buffers.
+    std::vector<std::shared_ptr<C2GraphicAllocation>> detachAndMoveTrackedBuffers();
     // Switches producer and transfers allocated buffers from old producer to the new one.
-    bool switchProducer(H2BGraphicBufferProducer* const newProducer, uint64_t newProducerId);
+    bool prepareMigrateBuffers();
+    bool pumpMigrateBuffers();
 
     const std::shared_ptr<C2Allocator> mAllocator;
 
     std::unique_ptr<H2BGraphicBufferProducer> mProducer;
-    uint64_t mProducerId;
+    uint64_t mProducerId = 0;
     C2BufferQueueBlockPool::OnRenderCallback mRenderCallback;
 
     // Function mutex to lock at the start of each API function call for protecting the
@@ -585,6 +588,7 @@ private:
     std::mutex mMutex;
 
     TrackedGraphicBuffers mTrackedGraphicBuffers;
+
     // Number of buffers requested on requestNewBufferSet() call.
     size_t mBuffersRequested = 0u;
     // Set to true when we need to call IGBP::setMaxDequeuedBufferCount() at next fetching buffer.
@@ -604,6 +608,16 @@ private:
     bool mBufferReleasedAfterTimedOut GUARDED_BY(mBufferReleaseMutex) = false;
     // The callback to notify the caller the buffer is available.
     ::base::OnceClosure mNotifyBlockAvailableCb GUARDED_BY(mBufferReleaseMutex);
+
+    // Fields for surface switching.
+    // The dequeued slots that comes from attaching buffers to the new surface.
+    // All the slots |mDequeuedSlots| should be also in |mTrackedGraphicBuffers|.
+    std::vector<int32_t> mDequeuedSlots;
+    // The allocations needed to be migrated to the new surface.
+    std::vector<std::shared_ptr<C2GraphicAllocation>> mAllocationsToBeMigrated;
+    // The generation and usage of the new surface.
+    uint32_t mGenerationToBeMigrated = 0;
+    uint64_t mUsageToBeMigrated = 0;
 };
 
 C2VdaBqBlockPool::Impl::Impl(const std::shared_ptr<C2Allocator>& allocator)
@@ -643,6 +657,21 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         }
 
         mPendingBuffersRequested = false;
+    }
+
+    // prepareMigrateBuffers() set maximum dequeued buffer count to the size of tracked buffers.
+    // To migrate all the tracked buffer by ourselves, we need to wait for the client releasing all
+    // the buffers that are migrated by the codec2 framework. Because the component calls
+    // fetchGraphicBlock() when a buffer is released to IGBP, we defer the buffer migration here.
+    if (!mAllocationsToBeMigrated.empty()) {
+        if (!pumpMigrateBuffers()) {
+            ALOGE("%s(): failed to migrate all buffers to the new surface.", __func__);
+            return C2_CORRUPTED;
+        }
+        if (!mAllocationsToBeMigrated.empty()) {
+            ALOGV("%s(): surface migration is not finished.", __func__);
+            return C2_TIMED_OUT;
+        }
     }
 
     int32_t slot;
@@ -696,7 +725,7 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         std::optional<uint32_t> uniqueId =
                 V4L2GraphicAllocator::getIdFromC2HandleWithId(handleWithId);
         ALOG_ASSERT(uniqueId, "Failed to get uniqueId from handleWithId");
-        ALOGV("%s(): buffer %u wraps { producerId: %" PRIu64 ", slot: %d }", __func__, *uniqueId,
+        ALOGV("%s(): buffer %u wraps { producerId: %" PRIx64 ", slot: %d }", __func__, *uniqueId,
               mProducerId, slot);
 
         std::shared_ptr<C2GraphicAllocation> alloc;
@@ -736,6 +765,22 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
                                                    C2MemoryUsage usage, int32_t* slot,
                                                    sp<Fence>* fence) {
+    // If there is an dequeued slot that is not owned by the component, then return it directly.
+    if (!mDequeuedSlots.empty()) {
+        ALOGV("%s(): mDequeuedSlots.size()=%zu", __func__, mDequeuedSlots.size());
+        // Erasing the last feasible element is faster, so we use reverse iterator here.
+        for (auto rIter = mDequeuedSlots.rbegin(); rIter != mDequeuedSlots.rend(); rIter++) {
+            const uint32_t uniqueId = mTrackedGraphicBuffers.getUniqueId(*rIter);
+            if (mComponentOwnedUniquedIds.find(uniqueId) == mComponentOwnedUniquedIds.end()) {
+                ALOGV("%s(): got slot %d from mDequeuedSlots, mDequeuedSlots.size()=%zu", __func__,
+                      *rIter, mDequeuedSlots.size());
+                *slot = *rIter;
+                mDequeuedSlots.erase(std::next(rIter).base());
+                return android::NO_ERROR;
+            }
+        }
+    }
+
     // Dequeue a free slot from IGBP.
     ALOGV("%s(): try to dequeue free slot from IGBP.", __func__);
     status_t status = mProducer->dequeueBuffer(width, height, format, usage, slot, fence);
@@ -887,7 +932,8 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
 
     // Release all remained slot buffer references here. CCodec should either cancel or queue its
     // owned buffers from this set before the next resolution change.
-    mTrackedGraphicBuffers.clear();
+    detachAndMoveTrackedBuffers();
+
     mBuffersRequested = static_cast<size_t>(bufferCount);
     mPendingBuffersRequested = true;
 
@@ -897,35 +943,48 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     return C2_OK;
 }
 
-void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>& producer) {
-    ALOGV("configureProducer");
-    if (producer == nullptr) {
-        ALOGE("input producer is nullptr...");
-        return;
+std::vector<std::shared_ptr<C2GraphicAllocation>>
+C2VdaBqBlockPool::Impl::detachAndMoveTrackedBuffers() {
+    // Detach all dequeued slots.
+    for (const int32_t slotId : mDequeuedSlots) {
+        status_t status = mProducer->detachBuffer(slotId);
+        if (status != android::NO_ERROR) {
+            ALOGW("detachBuffer slot=%d from old producer failed: %d", slotId, status);
+        }
     }
+    mDequeuedSlots.clear();
+
+    // Clear all the tracked graphic buffers.
+    std::vector<std::shared_ptr<C2GraphicAllocation>> allocations;
+    while (mTrackedGraphicBuffers.size() > 0) {
+        int32_t slotId;
+        uint32_t uniqueId;
+        std::shared_ptr<C2GraphicAllocation> allocation;
+        std::tie(slotId, uniqueId, allocation) = mTrackedGraphicBuffers.pop();
+
+        allocations.push_back(std::move(allocation));
+    }
+    return allocations;
+}
+
+void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>& producer) {
+    ALOGV("%s(producer=%p)", __func__, producer.get());
 
     std::lock_guard<std::mutex> lock(mMutex);
-    auto newProducer = std::make_unique<H2BGraphicBufferProducer>(producer);
-    uint64_t producerId;
-    if (newProducer->getUniqueId(&producerId) != android::NO_ERROR) {
+    if (producer == nullptr) {
+        ALOGI("input producer is nullptr...");
+
+        mProducer = nullptr;
+        mProducerId = 0;
+        detachAndMoveTrackedBuffers();
         return;
     }
 
-    if (mProducer && mProducerId != producerId) {
-        ALOGI("Producer (Surface) is going to switch... ( 0x%" PRIx64 " -> 0x%" PRIx64 " )",
-              mProducerId, producerId);
-        if (!switchProducer(newProducer.get(), producerId)) {
-            return;
-        }
-    } else {
-        mTrackedGraphicBuffers.clear();
-    }
-
+    auto newProducer = std::make_unique<H2BGraphicBufferProducer>(producer);
     if (newProducer->setDequeueTimeout(0) != android::NO_ERROR) {
         ALOGE("%s(): failed to setDequeueTimeout(0)", __func__);
         return;
     }
-
     // hack(b/146409777): Try to connect ARC-specific listener first.
     sp<BufferReleasedNotifier> listener = new BufferReleasedNotifier(shared_from_this());
     if (newProducer->connect(listener, 'ARC\0', false) == android::NO_ERROR) {
@@ -933,93 +992,114 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
         mFetchBufferNotifier = listener;
     }
 
-    // HGraphicBufferProducer could (and should) be replaced if the client has set a new generation
-    // number to producer. The old HGraphicBufferProducer will be disconnected and deprecated then.
+    uint64_t newProducerId;
+    if (newProducer->getUniqueId(&newProducerId) != android::NO_ERROR) {
+        ALOGE("%s(): failed to get IGBP ID", __func__);
+        return;
+    }
+    if (newProducerId == mProducerId) {
+        ALOGI("%s(): configure the same producer, ignore", __func__);
+        return;
+    }
+
+    ALOGI("Producer (Surface) is going to switch... ( 0x%" PRIx64 " -> 0x%" PRIx64 " )",
+          mProducerId, newProducerId);
+    mAllocationsToBeMigrated = detachAndMoveTrackedBuffers();
+
     mProducer = std::move(newProducer);
-    mProducerId = producerId;
+    mProducerId = newProducerId;
+    if (!prepareMigrateBuffers()) {
+        ALOGE("%s(): prepareMigrateBuffers() failed", __func__);
+    }
 }
 
-bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newProducer,
-                                            uint64_t newProducerId) {
+bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
+    ALOGV("%s()", __func__);
+
+    if (mAllocationsToBeMigrated.empty()) {
+        ALOGI("No buffers need to be migrated.");
+        return true;
+    }
+
     if (mAllocator->getId() == android::V4L2AllocatorId::SECURE_GRAPHIC) {
         // TODO(johnylin): support this when we meet the use case in the future.
         ALOGE("Switch producer for secure buffer is not supported...");
         return false;
     }
 
-    // Set maxDequeuedBufferCount to new producer.
-    // Just like requestNewBufferSet(), maxDequeuedBufferCount should be set to "requested buffer
-    // count" + "buffer count in client" to make sure it has enough available slots to request
-    // buffers from.
-    // "Requested buffer count" could be obtained by the size of |mTrackedGraphicBuffers|. However,
-    // it is not able to know "buffer count in client" in blockpool's aspect. The alternative
-    // solution is to set the worse case first, which is equal to the size of
-    // |mTrackedGraphicBuffers|.
-    if (newProducer->setMaxDequeuedBufferCount(mTrackedGraphicBuffers.size() * 2) !=
+    // Set allowAllocation to new producer.
+    if (mProducer->allowAllocation(true) != android::NO_ERROR) {
+        return false;
+    }
+
+    // Before calling configureProducer(), the codec2 framework already attached some of the buffers
+    // to the new surface. However, we have to migrate one more time to keep track of the uniqueId
+    // of each buffer.
+    // To guarantee each buffer is only attached at one slot, we set maximum dequeued buffer count
+    // to the size of tracked buffers before we attach all tracked buffers.
+    // Also, while attaching buffers, generation number and usage must be aligned to the producer.
+    // The generation number and usage could be queried by getting a buffer from the new producer.
+    // So we temporarily need one extra slot for querying generation and usage.
+    if (mProducer->setMaxDequeuedBufferCount(mAllocationsToBeMigrated.size() + 1) !=
         android::NO_ERROR) {
         return false;
     }
-
-    // Set allowAllocation to new producer.
-    if (newProducer->allowAllocation(true) != android::NO_ERROR) {
-        return false;
-    }
-
-    // Get a buffer from the new producer to get the generation number and usage of new producer.
-    // While attaching buffers, generation number and usage must be aligned to the producer.
-    uint32_t newGeneration;
-    uint64_t newUsage;
-    c2_status_t err = queryGenerationAndUsage(newProducer, mBufferFormat.mWidth,
-                                              mBufferFormat.mHeight, mBufferFormat.mPixelFormat,
-                                              mBufferFormat.mUsage, &newGeneration, &newUsage);
+    c2_status_t err =
+            queryGenerationAndUsage(mProducer.get(), mBufferFormat.mWidth, mBufferFormat.mHeight,
+                                    mBufferFormat.mPixelFormat, mBufferFormat.mUsage,
+                                    &mGenerationToBeMigrated, &mUsageToBeMigrated);
     if (err != C2_OK) {
         ALOGE("queryGenerationAndUsage failed: %d", err);
         return false;
     }
+    if (mProducer->setMaxDequeuedBufferCount(mAllocationsToBeMigrated.size()) !=
+        android::NO_ERROR) {
+        return false;
+    }
 
-    TrackedGraphicBuffers newTrackedGraphicBuffers;
-    while (mTrackedGraphicBuffers.size() > 0) {
-        int32_t oldSlotId;
-        uint32_t oldUniqueId;
-        std::shared_ptr<C2GraphicAllocation> allocation;
-        std::tie(oldSlotId, oldUniqueId, allocation) = mTrackedGraphicBuffers.pop();
+    return pumpMigrateBuffers();
+}
 
-        // Try to detach buffer from old producer.
-        status_t status = mProducer->detachBuffer(oldSlotId);
-        if (status != android::NO_ERROR) {
-            ALOGW("detachBuffer slot=%d from old producer failed: %d", oldSlotId, status);
-        }
+bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
+    ALOGV("%s(): mAllocationsToBeMigrated.size()=%zu", __func__, mAllocationsToBeMigrated.size());
 
-        // Convert C2GraphicAllocation to GraphicBuffer.
-        const C2Handle* oldHandleWithId = allocation->handle();
+    while (!mAllocationsToBeMigrated.empty()) {
+        const C2Handle* oldHandleWithId = mAllocationsToBeMigrated.back()->handle();
+
+        // Convert C2GraphicAllocation to GraphicBuffer, and update generation number and usage.
         uint32_t uniqueId, width, height, format, stride, igbpSlot, generation;
         uint64_t usage, igbpId;
         native_handle_t* nativeHandle =
                 V4L2GraphicAllocator::UnwrapAndMoveC2HandleWithId2NativeHandle(
                         oldHandleWithId, &uniqueId, &width, &height, &format, &usage, &stride,
                         &generation, &igbpId, &igbpSlot);
-        ALOG_ASSERT(oldUniqueId == uniqueId);
         sp<GraphicBuffer> graphicBuffer =
                 new GraphicBuffer(nativeHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
-                                  1, newUsage, stride);
+                                  1, mUsageToBeMigrated, stride);
         native_handle_delete(nativeHandle);
         if (graphicBuffer->initCheck() != android::NO_ERROR) {
             ALOGE("Failed to create GraphicBuffer: %d", graphicBuffer->initCheck());
             return false;
         }
+        graphicBuffer->setGenerationNumber(mGenerationToBeMigrated);
 
-        // Update generation number and usage.
-        graphicBuffer->setGenerationNumber(newGeneration);
         int32_t newSlot;
-        if (newProducer->attachBuffer(graphicBuffer, &newSlot) != android::NO_ERROR) {
+        status_t attachStatus = mProducer->attachBuffer(graphicBuffer, &newSlot);
+        if (attachStatus == android::TIMED_OUT || attachStatus == android::INVALID_OPERATION) {
+            ALOGV("%s(): No free slot yet.", __func__);
+            std::lock_guard<std::mutex> lock(mBufferReleaseMutex);
+            mBufferReleasedAfterTimedOut = false;
+            return true;
+        }
+        if (attachStatus != android::NO_ERROR) {
+            ALOGE("%s(): Failed to attach buffer to new producer: %d", __func__, attachStatus);
             return false;
         }
 
         // Migrate C2GraphicAllocation wrapping new usage, generation number, producer id, and
         // slot index, and store it to |newSlotAllocations|.
-        ALOGV("buffer wraps { producer id: %" PRIx64 ", slot: %d }", newProducerId, newSlot);
         C2Handle* migratedHandle = V4L2GraphicAllocator::MigrateC2HandleWithId(
-                oldHandleWithId, newUsage, newGeneration, newProducerId, newSlot);
+                oldHandleWithId, mUsageToBeMigrated, mGenerationToBeMigrated, mProducerId, newSlot);
         if (!migratedHandle) {
             ALOGE("MigrateC2HandleWithId() failed");
             return false;
@@ -1032,22 +1112,27 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
             return false;
         }
 
-        ALOGV("Transfered buffer from old producer to new, slot prev: %d -> new %d", oldSlotId,
-              newSlot);
-        newTrackedGraphicBuffers.insert(newSlot, uniqueId, std::move(migratedAllocation));
+        mTrackedGraphicBuffers.insert(newSlot, uniqueId, std::move(migratedAllocation));
+        ALOGV("%s(): Migrated buffer %u to slot %d, mTrackedGraphicBuffers.size=%zu", __func__,
+              uniqueId, newSlot, mTrackedGraphicBuffers.size());
+
+        mDequeuedSlots.push_back(newSlot);
+        mAllocationsToBeMigrated.pop_back();
+    }
+
+    if (mProducer->setMaxDequeuedBufferCount(mBuffersRequested) != android::NO_ERROR) {
+        return false;
     }
 
     // Set allowAllocation to false if we track enough buffers, so that the producer does not
     // allocate new buffers. Otherwise allocation will be disabled in fetchGraphicBlock after enough
     // buffers have been allocated.
-    if (newTrackedGraphicBuffers.size() == mBuffersRequested) {
-        if (newProducer->allowAllocation(false) != android::NO_ERROR) {
+    if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
+        if (mProducer->allowAllocation(false) != android::NO_ERROR) {
             ALOGE("allowAllocation(false) failed");
             return false;
         }
     }
-
-    mTrackedGraphicBuffers = std::move(newTrackedGraphicBuffers);
     return true;
 }
 
