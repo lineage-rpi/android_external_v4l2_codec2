@@ -15,10 +15,10 @@
 
 #include <rect.h>
 #include <size.h>
+#include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/VideoDecoder.h>
 #include <v4l2_codec2/components/VideoFrame.h>
 #include <v4l2_codec2/components/VideoFramePool.h>
-#include <v4l2_codec2/components/VideoTypes.h>
 #include <v4l2_device.h>
 
 namespace android {
@@ -62,7 +62,6 @@ private:
     void pumpDecodeRequest();
 
     void serviceDeviceTask(bool event);
-    void sendOutputBuffer(media::V4L2ReadableBufferRef buffer);
     bool dequeueResolutionChangeEvent();
     bool changeResolution();
 

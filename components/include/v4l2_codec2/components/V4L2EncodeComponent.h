@@ -16,7 +16,6 @@
 #include <C2Param.h>
 #include <C2ParamDef.h>
 #include <SimpleC2Interface.h>
-#include <base/files/scoped_file.h>
 #include <base/memory/scoped_refptr.h>
 #include <base/single_thread_task_runner.h>
 #include <base/synchronization/waitable_event.h>
@@ -69,11 +68,11 @@ private:
         static std::unique_ptr<InputFrame> Create(const C2ConstGraphicBlock& block);
         ~InputFrame() = default;
 
-        const std::vector<::base::ScopedFD>& getFDs() const { return mFds; }
+        const std::vector<int>& getFDs() const { return mFds; }
 
     private:
-        InputFrame(std::vector<::base::ScopedFD> fds) : mFds(std::move(fds)) {}
-        const std::vector<::base::ScopedFD> mFds;
+        InputFrame(std::vector<int> fds) : mFds(std::move(fds)) {}
+        const std::vector<int> mFds;
     };
 
     // Possible component states.
@@ -192,12 +191,6 @@ private:
     // Destroy the output buffers on the V4L2 device output queue.
     void destroyOutputBuffers();
 
-    // Copy the encoded data stream in |outputBuffer| to the specified |outputBlock|. If required
-    // stream headers will be injected into key frames. Returns the size in bytes of the resulting
-    // output block.
-    size_t copyIntoOutputBuffer(scoped_refptr<media::V4L2ReadableBuffer> outputBuffer,
-                                const C2LinearBlock& outputBlock);
-
     // Notify the client an error occurred and switch to the error state.
     void reportError(c2_status_t error);
 
@@ -250,16 +243,6 @@ private:
     // Key frame counter, a key frame will be requested each time it reaches zero.
     uint32_t mKeyFrameCounter = 0;
 
-    // Whether we need to manually cache and prepend the SPS and PPS to each IDR frame. When
-    // encoding H.264 we prepend each IDR with SPS and PPS for resilience. Some devices support this
-    // via the V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR control. For devices without support for
-    // this control we cache the latest SPS and PPS and manually inject them into the stream before
-    // every IDR.
-    bool mInjectParamsBeforeIDR = false;
-    // The latest cached SPS (without H.264 start code).
-    std::vector<uint8_t> mCachedSPS;
-    // The latest cached PPS (without H.264 start code).
-    std::vector<uint8_t> mCachedPPS;
     // Whether we extracted and submitted CSD (codec-specific data, e.g. H.264 SPS) to the framework.
     bool mCSDSubmitted = false;
 
@@ -270,6 +253,10 @@ private:
 
     // List of work item indices and frames associated with each buffer in the device input queue.
     std::vector<std::pair<int64_t, std::unique_ptr<InputFrame>>> mInputBuffersMap;
+
+    // Map of buffer indices and output blocks associated with each buffer in the output queue. This
+    // map keeps the C2LinearBlock buffers alive so we can avoid duplicated fds.
+    std::vector<std::shared_ptr<C2LinearBlock>> mOutputBuffersMap;
     // The output block pool.
     std::shared_ptr<C2BlockPool> mOutputBlockPool;
 

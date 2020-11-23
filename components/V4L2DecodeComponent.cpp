@@ -24,10 +24,10 @@
 #include <media/stagefright/foundation/ColorUtils.h>
 
 #include <h264_parser.h>
+#include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
 #include <v4l2_codec2/components/V4L2Decoder.h>
 #include <v4l2_codec2/components/VideoFramePool.h>
-#include <v4l2_codec2/components/VideoTypes.h>
 #include <v4l2_codec2/plugin_store/C2VdaBqBlockPool.h>
 
 namespace android {
@@ -38,19 +38,6 @@ const ::base::TimeDelta kBlockingMethodTimeout = ::base::TimeDelta::FromMillisec
 // Mask against 30 bits to avoid (undefined) wraparound on signed integer.
 int32_t frameIndexToBitstreamId(c2_cntr64_t frameIndex) {
     return static_cast<int32_t>(frameIndex.peeku() & 0x3FFFFFFF);
-}
-
-std::unique_ptr<BitstreamBuffer> C2BlockToBitstreamBuffer(const C2ConstLinearBlock& block,
-                                                          const int32_t bitstreamId) {
-    const int fd = block.handle()->data[0];
-    auto dupFd = ::base::ScopedFD(dup(fd));
-    if (!dupFd.is_valid()) {
-        ALOGE("Failed to dup(%d) input buffer (bitstreamId=%d), errno=%d", fd, bitstreamId, errno);
-        return nullptr;
-    }
-
-    return std::make_unique<BitstreamBuffer>(bitstreamId, std::move(dupFd), block.offset(),
-                                             block.size());
 }
 
 bool parseCodedColorAspects(const C2ConstLinearBlock& input,
@@ -264,6 +251,16 @@ void V4L2DecodeComponent::getVideoFramePool(std::unique_ptr<VideoFramePool>* poo
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
+    // (b/157113946): Prevent malicious dynamic resolution change exhausts system memory.
+    constexpr int kMaximumSupportedArea = 4096 * 4096;
+    if (size.width() * size.height() > kMaximumSupportedArea) {
+        ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width(),
+              size.height());
+        reportError(C2_BAD_VALUE);
+        *pool = nullptr;
+        return;
+    }
+
     // Get block pool ID configured from the client.
     auto poolId = mIntfImpl->getBlockPoolId();
     ALOGI("Using C2BlockPool ID = %" PRIu64 " for allocating output buffers", poolId);
@@ -456,7 +453,9 @@ void V4L2DecodeComponent::pumpPendingWorks() {
                 }
             }
 
-            auto buffer = C2BlockToBitstreamBuffer(linearBlock, bitstreamId);
+            std::unique_ptr<BitstreamBuffer> buffer =
+                    std::make_unique<BitstreamBuffer>(bitstreamId, linearBlock.handle()->data[0],
+                                                      linearBlock.offset(), linearBlock.size());
             if (!buffer) {
                 reportError(C2_CORRUPTED);
                 return;

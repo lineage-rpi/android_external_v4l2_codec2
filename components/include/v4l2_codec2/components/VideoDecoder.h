@@ -9,12 +9,11 @@
 #include <memory>
 
 #include <base/callback.h>
-#include <base/files/scoped_file.h>
 
+#include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
 #include <v4l2_codec2/components/VideoFrame.h>
 #include <v4l2_codec2/components/VideoFramePool.h>
-#include <v4l2_codec2/components/VideoTypes.h>
 
 namespace android {
 
