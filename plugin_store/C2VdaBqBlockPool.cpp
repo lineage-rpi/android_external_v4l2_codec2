@@ -415,7 +415,7 @@ c2_status_t MarkBlockPoolDataAsShared(const C2ConstGraphicBlock& sharedBlock) {
     const std::shared_ptr<C2VdaBqBlockPoolData> poolData =
             std::static_pointer_cast<C2VdaBqBlockPoolData>(data);
     if (poolData->mShared) {
-        ALOGE("C2VdaBqBlockPoolData(id=%" PRIu64 ", slot=%d) is already marked as shared...",
+        ALOGE("C2VdaBqBlockPoolData(id=%" PRIx64 ", slot=%d) is already marked as shared...",
               poolData->mProducerId, poolData->mSlotId);
         return C2_BAD_STATE;
     }
@@ -622,7 +622,7 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         }
 
         // Convert GraphicBuffer to C2GraphicAllocation and wrap producer id and slot index
-        ALOGV("buffer wraps { producer id: %" PRIu64 ", slot: %d }", mProducerId, slot);
+        ALOGV("buffer wraps { producer id: %" PRIx64 ", slot: %d }", mProducerId, slot);
         C2Handle* handleWithId = V4L2GraphicAllocator::WrapNativeHandleToC2HandleWithId(
                 slotBuffer->handle, slotBuffer->width, slotBuffer->height, slotBuffer->format,
                 slotBuffer->usage, slotBuffer->stride, slotBuffer->getGenerationNumber(),
@@ -791,7 +791,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     }
 
     if (mProducer && mProducerId != producerId) {
-        ALOGI("Producer (Surface) is going to switch... ( 0x%" PRIu64 " -> 0x%" PRIu64 " )",
+        ALOGI("Producer (Surface) is going to switch... ( 0x%" PRIx64 " -> 0x%" PRIx64 " )",
               mProducerId, producerId);
         if (!switchProducer(newProducer.get(), producerId)) {
             return;
@@ -886,7 +886,7 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
 
         // Migrate C2GraphicAllocation wrapping new usage, generation number, producer id, and
         // slot index, and store it to |newSlotAllocations|.
-        ALOGV("buffer wraps { producer id: %" PRIu64 ", slot: %d }", newProducerId, newSlot);
+        ALOGV("buffer wraps { producer id: %" PRIx64 ", slot: %d }", newProducerId, newSlot);
         C2Handle* migratedHandle = V4L2GraphicAllocator::MigrateC2HandleWithId(
                 oldHandleWithId, newUsage, newGeneration, newProducerId, newSlot);
         if (!migratedHandle) {
@@ -930,7 +930,7 @@ bool C2VdaBqBlockPool::Impl::switchProducer(H2BGraphicBufferProducer* const newP
 }
 
 void C2VdaBqBlockPool::Impl::detachBuffer(uint64_t producerId, int32_t slotId) {
-    ALOGV("detachBuffer: producer id = %" PRIu64 ", slot = %d", producerId, slotId);
+    ALOGV("detachBuffer: producer id = %" PRIx64 ", slot = %d", producerId, slotId);
     std::lock_guard<std::mutex> lock(mMutex);
     if (producerId == mProducerId && mProducer) {
         if (mProducer->detachBuffer(slotId) != android::NO_ERROR) {
