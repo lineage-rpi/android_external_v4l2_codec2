@@ -618,6 +618,8 @@ private:
     // The generation and usage of the new surface.
     uint32_t mGenerationToBeMigrated = 0;
     uint64_t mUsageToBeMigrated = 0;
+    // Set to true if any error occurs at previous configureProducer().
+    bool mConfigureProducerError = false;
 };
 
 C2VdaBqBlockPool::Impl::Impl(const std::shared_ptr<C2Allocator>& allocator)
@@ -628,6 +630,11 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         std::shared_ptr<C2GraphicBlock>* block /* nonnull */) {
     ALOGV("%s(%ux%u)", __func__, width, height);
     std::lock_guard<std::mutex> lock(mMutex);
+
+    if (mConfigureProducerError) {
+        ALOGE("%s(): error occurred at previous configureProducer()", __func__);
+        return C2_CORRUPTED;
+    }
 
     if (!mProducer) {
         // Producer will not be configured in byte-buffer mode. Allocate buffers from allocator
@@ -983,6 +990,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     auto newProducer = std::make_unique<H2BGraphicBufferProducer>(producer);
     if (newProducer->setDequeueTimeout(0) != android::NO_ERROR) {
         ALOGE("%s(): failed to setDequeueTimeout(0)", __func__);
+        mConfigureProducerError = true;
         return;
     }
     // hack(b/146409777): Try to connect ARC-specific listener first.
@@ -995,6 +1003,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     uint64_t newProducerId;
     if (newProducer->getUniqueId(&newProducerId) != android::NO_ERROR) {
         ALOGE("%s(): failed to get IGBP ID", __func__);
+        mConfigureProducerError = true;
         return;
     }
     if (newProducerId == mProducerId) {
@@ -1010,6 +1019,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     mProducerId = newProducerId;
     if (!prepareMigrateBuffers()) {
         ALOGE("%s(): prepareMigrateBuffers() failed", __func__);
+        mConfigureProducerError = true;
     }
 }
 
