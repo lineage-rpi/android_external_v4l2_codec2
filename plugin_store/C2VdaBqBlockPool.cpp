@@ -631,6 +631,15 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
     ALOGV("%s(%ux%u)", __func__, width, height);
     std::lock_guard<std::mutex> lock(mMutex);
 
+    if (width != mBufferFormat.mWidth || height != mBufferFormat.mHeight ||
+        format != mBufferFormat.mPixelFormat || usage.expected != mBufferFormat.mUsage.expected) {
+        ALOGE("%s(): buffer format (%ux%u, format=%u, usage=%" PRIx64
+              ") is different from requested format (%ux%u, format=%u, usage=%" PRIx64 ")",
+              __func__, width, height, format, usage.expected, mBufferFormat.mWidth,
+              mBufferFormat.mHeight, mBufferFormat.mPixelFormat, mBufferFormat.mUsage.expected);
+        return C2_BAD_VALUE;
+    }
+
     if (mConfigureProducerError) {
         ALOGE("%s(): error occurred at previous configureProducer()", __func__);
         return C2_CORRUPTED;

@@ -504,8 +504,11 @@ bool V4L2Decoder::changeResolution() {
         return false;
     }
 
+    // Release the previous VideoFramePool before getting a new one to guarantee only one pool
+    // exists at the same time.
+    mVideoFramePool.reset();
     // Always use fexible pixel 420 format YCBCR_420_888 in Android.
-    mGetPoolCb.Run(&mVideoFramePool, mCodedSize, HalPixelFormat::YCBCR_420_888, *numOutputBuffers);
+    mVideoFramePool = mGetPoolCb.Run(mCodedSize, HalPixelFormat::YCBCR_420_888, *numOutputBuffers);
     if (!mVideoFramePool) {
         ALOGE("Failed to get block pool with size: %s", mCodedSize.ToString().c_str());
         return false;

@@ -225,12 +225,16 @@ void V4L2DecodeComponent::startTask(c2_status_t* status) {
         return;
     }
     const size_t inputBufferSize = mIntfImpl->getInputBufferSize();
-    mDecoder = V4L2Decoder::Create(
-            *codec, inputBufferSize,
-            ::base::BindRepeating(&V4L2DecodeComponent::getVideoFramePool, mWeakThis),
-            ::base::BindRepeating(&V4L2DecodeComponent::onOutputFrameReady, mWeakThis),
-            ::base::BindRepeating(&V4L2DecodeComponent::reportError, mWeakThis, C2_CORRUPTED),
-            mDecoderTaskRunner);
+    // ::base::Unretained(this) is safe here because |mDecoder| is always destroyed before
+    // |mDecoderThread| is stopped, so |*this| is always valid during |mDecoder|'s lifetime.
+    mDecoder = V4L2Decoder::Create(*codec, inputBufferSize,
+                                   ::base::BindRepeating(&V4L2DecodeComponent::getVideoFramePool,
+                                                         ::base::Unretained(this)),
+                                   ::base::BindRepeating(&V4L2DecodeComponent::onOutputFrameReady,
+                                                         ::base::Unretained(this)),
+                                   ::base::BindRepeating(&V4L2DecodeComponent::reportError,
+                                                         ::base::Unretained(this), C2_CORRUPTED),
+                                   mDecoderTaskRunner);
     if (!mDecoder) {
         ALOGE("Failed to create V4L2Decoder for %s", VideoCodecToString(*codec));
         return;
@@ -245,9 +249,9 @@ void V4L2DecodeComponent::startTask(c2_status_t* status) {
     *status = C2_OK;
 }
 
-void V4L2DecodeComponent::getVideoFramePool(std::unique_ptr<VideoFramePool>* pool,
-                                            const media::Size& size, HalPixelFormat pixelFormat,
-                                            size_t numBuffers) {
+std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const media::Size& size,
+                                                                       HalPixelFormat pixelFormat,
+                                                                       size_t numBuffers) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
@@ -257,8 +261,7 @@ void V4L2DecodeComponent::getVideoFramePool(std::unique_ptr<VideoFramePool>* poo
         ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width(),
               size.height());
         reportError(C2_BAD_VALUE);
-        *pool = nullptr;
-        return;
+        return nullptr;
     }
 
     // Get block pool ID configured from the client.
@@ -269,12 +272,11 @@ void V4L2DecodeComponent::getVideoFramePool(std::unique_ptr<VideoFramePool>* poo
     if (status != C2_OK) {
         ALOGE("Graphic block allocator is invalid: %d", status);
         reportError(status);
-        *pool = nullptr;
-        return;
+        return nullptr;
     }
 
-    *pool = VideoFramePool::Create(std::move(blockPool), numBuffers, size, pixelFormat, mIsSecure,
-                                   mDecoderTaskRunner);
+    return VideoFramePool::Create(std::move(blockPool), numBuffers, size, pixelFormat, mIsSecure,
+                                  mDecoderTaskRunner);
 }
 
 c2_status_t V4L2DecodeComponent::stop() {

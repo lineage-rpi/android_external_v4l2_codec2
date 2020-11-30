@@ -70,8 +70,9 @@ private:
     // Try to process pending works at |mPendingWorks|. Paused when |mIsDraining| is set.
     void pumpPendingWorks();
     // Get the buffer pool.
-    void getVideoFramePool(std::unique_ptr<VideoFramePool>* pool, const media::Size& size,
-                           HalPixelFormat pixelFormat, size_t numBuffers);
+    std::unique_ptr<VideoFramePool> getVideoFramePool(const media::Size& size,
+                                                      HalPixelFormat pixelFormat,
+                                                      size_t numBuffers);
     // Detect and report works with no-show frame, only used at VP8 and VP9.
     void detectNoShowFrameWorksAndReportIfFinished(const C2WorkOrdinalStruct& currOrdinal);
 

@@ -26,9 +26,8 @@ public:
     };
     static const char* DecodeStatusToString(DecodeStatus status);
 
-    using GetPoolCB =
-            base::RepeatingCallback<void(std::unique_ptr<VideoFramePool>*, const media::Size& size,
-                                         HalPixelFormat pixelFormat, size_t numOutputBuffers)>;
+    using GetPoolCB = base::RepeatingCallback<std::unique_ptr<VideoFramePool>(
+            const media::Size& size, HalPixelFormat pixelFormat, size_t numOutputBuffers)>;
     using DecodeCB = base::OnceCallback<void(DecodeStatus)>;
     using OutputCB = base::RepeatingCallback<void(std::unique_ptr<VideoFrame>)>;
     using ErrorCB = base::RepeatingCallback<void()>;
