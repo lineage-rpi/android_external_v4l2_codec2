@@ -1477,7 +1477,11 @@ bool V4L2EncodeComponent::enqueueInputBuffer(std::unique_ptr<InputFrame> frame,
         buffer->SetPlaneBytesUsed(i, bytesUsed);
     }
 
-    std::move(*buffer).QueueDMABuf(frame->getFDs());
+    if (!std::move(*buffer).QueueDMABuf(frame->getFDs())) {
+        ALOGE("Failed to queue input buffer using QueueDMABuf");
+        reportError(C2_CORRUPTED);
+        return false;
+    }
 
     ALOGV("Queued buffer in input queue (index: %" PRId64 ", timestamp: %" PRId64
           ", bufferId: %zu)",
