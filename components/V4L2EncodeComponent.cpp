@@ -27,6 +27,7 @@
 #include <rect.h>
 #include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/EncodeHelpers.h>
+#include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_device.h>
 #include <video_pixel_format.h>
 
@@ -126,6 +127,43 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
         planes.push_back({offsets[i], strides[i]});
     }
     return planes;
+}
+
+// Get the video frame stride for the specified |format| and |size|.
+std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, media::Size size) {
+    // Fetch a graphic block from the pool to determine the stride.
+    std::shared_ptr<C2BlockPool> pool;
+    c2_status_t status = GetCodec2BlockPool(C2BlockPool::BASIC_GRAPHIC, nullptr, &pool);
+    if (status != C2_OK) {
+        ALOGE("Failed to get basic graphic block pool (err=%d)", status);
+        return std::nullopt;
+    }
+
+    // Android HAL format doesn't have I420, we use YV12 instead and swap the U and V planes when
+    // converting to NV12. YCBCR_420_888 will allocate NV12 by minigbm.
+    HalPixelFormat halFormat = (format == media::VideoPixelFormat::PIXEL_FORMAT_I420)
+                                       ? HalPixelFormat::YV12
+                                       : HalPixelFormat::YCBCR_420_888;
+
+    std::shared_ptr<C2GraphicBlock> block;
+    status = pool->fetchGraphicBlock(size.width(), size.height(), static_cast<uint32_t>(halFormat),
+                                     C2MemoryUsage(C2MemoryUsage::CPU_READ), &block);
+    if (status != C2_OK) {
+        ALOGE("Failed to fetch graphic block (err=%d)", status);
+        return std::nullopt;
+    }
+
+    const C2ConstGraphicBlock constBlock =
+            block->share(C2Rect(size.width(), size.height()), C2Fence());
+    media::VideoPixelFormat pixelFormat;
+    std::optional<std::vector<VideoFramePlane>> planes =
+            getVideoFrameLayout(constBlock, &pixelFormat);
+    if (!planes || planes.value().empty()) {
+        ALOGE("Failed to get video frame layout from block");
+        return std::nullopt;
+    }
+
+    return planes.value()[0].mStride;
 }
 
 // The maximum size for output buffer, which is chosen empirically for a 1080p video.
@@ -644,11 +682,18 @@ bool V4L2EncodeComponent::configureInputFormat(media::VideoPixelFormat inputForm
     ALOG_ASSERT(!mVisibleSize.IsEmpty());
     ALOG_ASSERT(!mInputFormatConverter);
 
+    std::optional<uint32_t> stride = getVideoFrameStride(inputFormat, mVisibleSize);
+    if (!stride) {
+        ALOGE("Failed to get video frame stride");
+        reportError(C2_CORRUPTED);
+        return false;
+    }
+
     // First try to use the requested pixel format directly.
     ::base::Optional<struct v4l2_format> format;
     auto fourcc = media::Fourcc::FromVideoPixelFormat(inputFormat, false);
     if (fourcc) {
-        format = mInputQueue->SetFormat(fourcc->ToV4L2PixFmt(), mVisibleSize, 0);
+        format = mInputQueue->SetFormat(fourcc->ToV4L2PixFmt(), mVisibleSize, 0, *stride);
     }
 
     // If the device doesn't support the requested input format we'll try the device's preferred
@@ -658,7 +703,7 @@ bool V4L2EncodeComponent::configureInputFormat(media::VideoPixelFormat inputForm
         std::vector<uint32_t> preferredFormats =
                 mDevice->PreferredInputFormat(media::V4L2Device::Type::kEncoder);
         for (uint32_t i = 0; !format && i < preferredFormats.size(); ++i) {
-            format = mInputQueue->SetFormat(preferredFormats[i], mVisibleSize, 0);
+            format = mInputQueue->SetFormat(preferredFormats[i], mVisibleSize, 0, *stride);
         }
     }
 
