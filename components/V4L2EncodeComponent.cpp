@@ -1141,14 +1141,17 @@ void V4L2EncodeComponent::flush() {
         }
     }
 
-    // Return all buffers to the input format convertor and clear all references to graphic blocks
-    // in the input queue. We don't need to clear the output map as those buffers will still be
-    // used.
+    // Return all buffers to the input format convertor and clear all references to graphic and
+    // linear blocks in the input and output queue.
     for (auto& it : mInputBuffersMap) {
         if (mInputFormatConverter && it.second) {
             mInputFormatConverter->returnBlock(it.first);
         }
         it.second = nullptr;
+    }
+
+    for (auto& it : mOutputBuffersMap) {
+        it = nullptr;
     }
 
     // Report all queued work items as aborted.
