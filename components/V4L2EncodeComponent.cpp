@@ -946,9 +946,13 @@ void V4L2EncodeComponent::scheduleNextEncodeTask() {
         return;
     }
 
+    // It's possible we flushed the encoder since this function was scheduled.
+    if (mInputWorkQueue.empty()) {
+        return;
+    }
+
     // Get the next work item. Currently only a single worklet per work item is supported. An input
     // buffer should always be supplied unless this is a drain or CSD request.
-    ALOG_ASSERT(!mInputWorkQueue.empty());
     C2Work* work = mInputWorkQueue.front().get();
     ALOG_ASSERT(work->input.buffers.size() <= 1u && work->worklets.size() == 1u);
 
