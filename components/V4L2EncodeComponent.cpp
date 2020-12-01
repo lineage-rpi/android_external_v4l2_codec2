@@ -405,6 +405,8 @@ void V4L2EncodeComponent::stopTask(::base::WaitableEvent* done) {
     // device queues.
     flush();
 
+    mInputFormatConverter.reset();
+
     // Deallocate all V4L2 device input and output buffers.
     destroyInputBuffers();
     destroyOutputBuffers();
