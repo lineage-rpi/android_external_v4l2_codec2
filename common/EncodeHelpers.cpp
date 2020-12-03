@@ -98,12 +98,19 @@ android_ycbcr getGraphicBlockInfo(const C2ConstGraphicBlock& block) {
                                               height, format, 1, usage, stride);
     native_handle_delete(grallocHandle);
 
+    // Pass SW flag so that ARCVM returns the guest buffer dimensions instead
+    // of the host buffer dimensions. This means we will have to convert the
+    // return value from ptrs to buffer offsets ourselves.
     android_ycbcr ycbcr = {};
-    // Usage flag without SW_READ/WRITE bits.
-    constexpr uint32_t kNonSWLockUsage = 0;
-    int32_t status = buf->lockYCbCr(kNonSWLockUsage, &ycbcr);
+    int32_t status = buf->lockYCbCr(GRALLOC_USAGE_SW_READ_OFTEN, &ycbcr);
     if (status != OK) ALOGE("lockYCbCr is failed: %d", (int)status);
     buf->unlock();
+
+    uintptr_t y = reinterpret_cast<uintptr_t>(ycbcr.y);
+    ycbcr.y = nullptr;
+    ycbcr.cb = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(ycbcr.cb) - y);
+    ycbcr.cr = reinterpret_cast<void*>(reinterpret_cast<uintptr_t>(ycbcr.cr) - y);
+
     return ycbcr;
 }
 
