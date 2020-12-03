@@ -5,6 +5,7 @@
 #ifndef ANDROID_V4L2_CODEC2_COMPONENTS_V4L2_DECODE_COMPONENT_H
 #define ANDROID_V4L2_CODEC2_COMPONENTS_V4L2_DECODE_COMPONENT_H
 
+#include <atomic>
 #include <memory>
 
 #include <C2Component.h>
@@ -91,6 +92,8 @@ private:
     bool reportWork(std::unique_ptr<C2Work> work);
     // Report error when any error occurs.
     void reportError(c2_status_t error);
+
+    static std::atomic<int32_t> sConcurrentInstances;
 
     // The pointer of component interface implementation.
     std::shared_ptr<V4L2DecodeInterface> mIntfImpl;

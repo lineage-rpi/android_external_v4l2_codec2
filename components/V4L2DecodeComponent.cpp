@@ -20,6 +20,7 @@
 #include <base/bind.h>
 #include <base/callback_helpers.h>
 #include <base/time/time.h>
+#include <cutils/properties.h>
 #include <log/log.h>
 #include <media/stagefright/foundation/ColorUtils.h>
 
@@ -138,9 +139,24 @@ bool isNoShowFrameWork(const C2Work& work, const C2WorkOrdinalStruct& currOrdina
 }  // namespace
 
 // static
+std::atomic<int32_t> V4L2DecodeComponent::sConcurrentInstances = 0;
+
+// static
 std::shared_ptr<C2Component> V4L2DecodeComponent::create(
         const std::string& name, c2_node_id_t id, const std::shared_ptr<C2ReflectorHelper>& helper,
         C2ComponentFactory::ComponentDeleter deleter) {
+    static const int32_t kMaxConcurrentInstances = []() -> int32_t {
+        return property_get_int32("debug.v4l2_codec2.decode.concurrent-instances", -1);
+    }();
+    static std::mutex mutex;
+
+    std::lock_guard<std::mutex> lock(mutex);
+
+    if (kMaxConcurrentInstances >= 0 && sConcurrentInstances.load() >= kMaxConcurrentInstances) {
+        ALOGW("Reject to Initialize() due to too many instances: %d", sConcurrentInstances.load());
+        return nullptr;
+    }
+
     auto intfImpl = std::make_shared<V4L2DecodeInterface>(name, helper);
     if (intfImpl->status() != C2_OK) {
         ALOGE("Failed to initialize V4L2DecodeInterface.");
@@ -158,6 +174,7 @@ V4L2DecodeComponent::V4L2DecodeComponent(const std::string& name, c2_node_id_t i
         mIntf(std::make_shared<SimpleInterface<V4L2DecodeInterface>>(name.c_str(), id, mIntfImpl)) {
     ALOGV("%s(%s)", __func__, name.c_str());
 
+    sConcurrentInstances.fetch_add(1, std::memory_order_relaxed);
     mIsSecure = name.find(".secure") != std::string::npos;
 }
 
@@ -169,6 +186,7 @@ V4L2DecodeComponent::~V4L2DecodeComponent() {
                 FROM_HERE, ::base::BindOnce(&V4L2DecodeComponent::destroyTask, mWeakThis));
         mDecoderThread.Stop();
     }
+    sConcurrentInstances.fetch_sub(1, std::memory_order_relaxed);
     ALOGV("%s() done", __func__);
 }
 

@@ -87,7 +87,7 @@ c2_status_t V4L2ComponentFactory::createComponent(c2_node_id_t id,
     } else {
         *component = V4L2DecodeComponent::create(mComponentName, id, mReflector, deleter);
     }
-    return *component ? C2_OK : C2_BAD_VALUE;
+    return *component ? C2_OK : C2_NO_MEMORY;
 }
 
 c2_status_t V4L2ComponentFactory::createInterface(
