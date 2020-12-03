@@ -942,9 +942,8 @@ bool V4L2EncodeComponent::updateEncodingParameters() {
         parms.parm.output.timeperframe.numerator = 1;
         parms.parm.output.timeperframe.denominator = framerate;
         if (mDevice->Ioctl(VIDIOC_S_PARM, &parms) != 0) {
-            // TODO(b/161499573): VIDIOC_S_PARM is currently not supported yet, assume the operation
-            // was successful for now.
-            ALOGW("Requesting framerate change failed");
+            ALOGE("Requesting framerate change failed");
+            return false;
         }
         mFramerate = framerate;
     }
