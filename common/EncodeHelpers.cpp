@@ -7,6 +7,7 @@
 
 #include <v4l2_codec2/common/EncodeHelpers.h>
 
+#include <linux/v4l2-controls.h>
 #include <string.h>
 
 #include <C2AllocatorGralloc.h>
@@ -46,42 +47,40 @@ media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profil
     }
 }
 
-uint8_t c2LevelToLevelIDC(C2Config::level_t level) {
+uint8_t c2LevelToV4L2Level(C2Config::level_t level) {
     switch (level) {
     case C2Config::LEVEL_AVC_1:
-        return 10;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_1_0;
     case C2Config::LEVEL_AVC_1B:
-        return 9;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_1B;
     case C2Config::LEVEL_AVC_1_1:
-        return 11;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_1_1;
     case C2Config::LEVEL_AVC_1_2:
-        return 12;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_1_2;
     case C2Config::LEVEL_AVC_1_3:
-        return 13;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_1_3;
     case C2Config::LEVEL_AVC_2:
-        return 20;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_2_0;
     case C2Config::LEVEL_AVC_2_1:
-        return 21;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_2_1;
     case C2Config::LEVEL_AVC_2_2:
-        return 22;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_2_2;
     case C2Config::LEVEL_AVC_3:
-        return 30;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_3_0;
     case C2Config::LEVEL_AVC_3_1:
-        return 31;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_3_1;
     case C2Config::LEVEL_AVC_3_2:
-        return 32;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_3_2;
     case C2Config::LEVEL_AVC_4:
-        return 40;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_4_0;
     case C2Config::LEVEL_AVC_4_1:
-        return 41;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_4_1;
     case C2Config::LEVEL_AVC_4_2:
-        return 42;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_4_2;
     case C2Config::LEVEL_AVC_5:
-        return 50;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_5_0;
     case C2Config::LEVEL_AVC_5_1:
-        return 51;
-    case C2Config::LEVEL_AVC_5_2:
-        return 52;
+        return V4L2_MPEG_VIDEO_H264_LEVEL_5_1;
     default:
         ALOGE("Unrecognizable C2 level (value = 0x%x)...", level);
         return 0;

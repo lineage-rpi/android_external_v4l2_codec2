@@ -41,8 +41,8 @@ struct VideoEncoderAcceleratorConfig {
 // Convert the specified C2Config profile to a media::VideoCodecProfile.
 media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profile);
 
-// Convert the specified C2Config level to an integer value.
-uint8_t c2LevelToLevelIDC(C2Config::level_t level);
+// Convert the specified C2Config level to a V4L2 level.
+uint8_t c2LevelToV4L2Level(C2Config::level_t level);
 
 // Get the specified graphics block in YCbCr format.
 android_ycbcr getGraphicBlockInfo(const C2ConstGraphicBlock& block);

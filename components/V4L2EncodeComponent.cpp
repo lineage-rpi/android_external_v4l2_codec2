@@ -659,7 +659,7 @@ bool V4L2EncodeComponent::initializeEncoder() {
     if (!createInputBuffers() || !createOutputBuffers()) return false;
 
     // Configure the device, setting all required controls.
-    uint8_t level = c2LevelToLevelIDC(mInterface->getOutputLevel());
+    uint8_t level = c2LevelToV4L2Level(mInterface->getOutputLevel());
     if (!configureDevice(outputProfile, level)) return false;
 
     // We're ready to start encoding now.
@@ -888,9 +888,9 @@ bool V4L2EncodeComponent::configureDevice(media::VideoCodecProfile outputProfile
 
     // Set H.264 output level. Use Level 4.0 as fallback default.
     // TODO(dstaessens): Investigate code added by hiroh@ recently to select level in Chrome VEA.
-    uint8_t h264Level = outputH264Level.value_or(media::H264SPS::kLevelIDC4p0);
-    h264Ctrls.emplace_back(V4L2_CID_MPEG_VIDEO_H264_LEVEL,
-                           media::V4L2Device::H264LevelIdcToV4L2H264Level(h264Level));
+    int32_t h264Level =
+            static_cast<int32_t>(outputH264Level.value_or(V4L2_MPEG_VIDEO_H264_LEVEL_4_0));
+    h264Ctrls.emplace_back(V4L2_CID_MPEG_VIDEO_H264_LEVEL, h264Level);
 
     // Ask not to put SPS and PPS into separate bitstream buffers.
     h264Ctrls.emplace_back(V4L2_CID_MPEG_VIDEO_HEADER_MODE,
