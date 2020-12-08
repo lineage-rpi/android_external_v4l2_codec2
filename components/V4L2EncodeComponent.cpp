@@ -973,9 +973,9 @@ bool V4L2EncodeComponent::updateEncodingParameters() {
     if (mKeyFrameCounter == 0) {
         if (!mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG,
                                   {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME)})) {
-            // TODO(b/161498590): V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME is currently not supported
-            // yet, assume the operation was successful for now.
-            ALOGW("Failed requesting key frame");
+            ALOGE("Failed requesting key frame");
+            reportError(status);
+            return false;
         }
     }
 
