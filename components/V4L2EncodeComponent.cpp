@@ -15,6 +15,7 @@
 #include <C2AllocatorGralloc.h>
 #include <C2PlatformSupport.h>
 #include <C2Work.h>
+#include <android/hardware/graphics/common/1.0/types.h>
 #include <base/bind.h>
 #include <base/bind_helpers.h>
 #include <log/log.h>
@@ -24,11 +25,12 @@
 #include <fourcc.h>
 #include <h264_parser.h>
 #include <rect.h>
-#include <unaligned_shared_memory.h>
 #include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/EncodeHelpers.h>
 #include <v4l2_device.h>
 #include <video_pixel_format.h>
+
+using android::hardware::graphics::common::V1_0::BufferUsage;
 
 namespace android {
 
@@ -40,7 +42,7 @@ const media::VideoPixelFormat kInputPixelFormat = media::VideoPixelFormat::PIXEL
 // TODO(dstaessens): Clean up code extracting layout from a C2GraphicBlock.
 std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGraphicBlock& block,
                                                                 media::VideoPixelFormat* format) {
-    ALOGD("%s()", __func__);
+    ALOGV("%s()", __func__);
 
     // Get the C2PlanarLayout from the graphics block. The C2GraphicView returned by block.map()
     // needs to be released before calling getGraphicBlockInfo(), or the lockYCbCr() call will block
@@ -126,30 +128,6 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
     return planes;
 }
 
-const uint8_t kH264StartCode[] = {0, 0, 0, 1};
-const size_t kH264StartCodeSize = sizeof(kH264StartCode);
-
-// Copy a H.264 NALU of size |srcSize| (without start code), located at |src|,into a buffer starting
-// at |dst| of size |dstSize|, prepending it with a H.264 start code (as long as both fit). After
-// copying, update |dst| to point to the address immediately after the copied data, and update
-// |dstSize| to contain remaining destination buffer size.
-void copyNALUPrependingStartCode(const uint8_t* src, size_t srcSize, uint8_t** dst,
-                                 size_t* dstSize) {
-    ALOGD("%s()", __func__);
-
-    size_t sizeToCopy = kH264StartCodeSize + srcSize;
-    if (sizeToCopy > *dstSize) {
-        ALOGE("Could not copy a NALU, not enough space in destination buffer");
-        return;
-    }
-
-    memcpy(*dst, kH264StartCode, kH264StartCodeSize);
-    memcpy(*dst + kH264StartCodeSize, src, srcSize);
-
-    *dst += sizeToCopy;
-    *dstSize -= sizeToCopy;
-}
-
 // The maximum size for output buffer, which is chosen empirically for a 1080p video.
 constexpr size_t kMaxBitstreamBufferSizeInBytes = 2 * 1024 * 1024;  // 2MB
 // The frame size for 1080p (FHD) video in pixels.
@@ -180,15 +158,10 @@ constexpr size_t kOutputBufferCount = 2;
 // static
 std::unique_ptr<V4L2EncodeComponent::InputFrame> V4L2EncodeComponent::InputFrame::Create(
         const C2ConstGraphicBlock& block) {
-    std::vector<::base::ScopedFD> fds;
+    std::vector<int> fds;
     const C2Handle* const handle = block.handle();
     for (int i = 0; i < handle->numFds; i++) {
-        fds.emplace_back(dup(handle->data[i]));
-        if (!fds.back().is_valid()) {
-            ALOGE("Failed to duplicate input graphic block handle %d (errno: %d)", handle->data[i],
-                  errno);
-            return nullptr;
-        }
+        fds.emplace_back(handle->data[i]);
     }
 
     return std::unique_ptr<InputFrame>(new InputFrame(std::move(fds)));
@@ -518,25 +491,28 @@ void V4L2EncodeComponent::onDrainDone(bool done) {
         return;
     }
 
-    // All work that needs to be drained should be ready now, which means the output work queue
-    // should only contain a single item which is marked as EOS.
-    if (mOutputWorkQueue.size() != 1u ||
-        !(mOutputWorkQueue.front()->input.flags & C2FrameData::FLAG_END_OF_STREAM)) {
-        ALOGE("Output work queue should contain a single EOS item after draining");
+    // The last work item in the output work queue should be an EOS request.
+    if (mOutputWorkQueue.empty() ||
+        !(mOutputWorkQueue.back()->input.flags & C2FrameData::FLAG_END_OF_STREAM)) {
+        ALOGE("The last item in the output work queue should be marked EOS");
         reportError(C2_CORRUPTED);
         return;
     }
 
-    std::unique_ptr<C2Work> eosWork = std::move(mOutputWorkQueue.front());
+    // Mark the last item in the output work queue as EOS done.
+    C2Work* eosWork = mOutputWorkQueue.back().get();
+    eosWork->worklets.back()->output.flags = C2FrameData::FLAG_END_OF_STREAM;
+
+    // Draining is done which means all buffers on the device output queue have been returned, but
+    // not all buffers on the device input queue might have been returned yet.
+    if ((mOutputWorkQueue.size() > 1) || !isWorkDone(*eosWork)) {
+        ALOGV("Draining done, waiting for input buffers to be returned");
+        return;
+    }
+
+    ALOGV("Draining done");
+    reportWork(std::move(mOutputWorkQueue.front()));
     mOutputWorkQueue.pop_front();
-    eosWork->worklets.front()->output.flags = C2FrameData::FLAG_END_OF_STREAM;
-    if (!isWorkDone(*eosWork)) {
-        ALOGE("EOS work item should be done after draining");
-        reportError(C2_CORRUPTED);
-        return;
-    }
-
-    reportWork(std::move(eosWork));
 
     // Draining the encoder is now done, we can start encoding again.
     if (!mInputWorkQueue.empty()) {
@@ -717,9 +693,8 @@ bool V4L2EncodeComponent::configureInputFormat(media::VideoPixelFormat inputForm
     // buffer always seems to fail unless we copy it into a new a buffer first. As a temporary
     // workaround the line below is commented, but this should be undone once the issue is fixed.
     //if (mInputLayout->format() != inputFormat) {
-    ALOGV("Creating input format convertor (%s -> %s)",
-          media::VideoPixelFormatToString(mInputLayout->format()).c_str(),
-          media::VideoPixelFormatToString(inputFormat).c_str());
+    ALOGV("Creating input format convertor (%s)",
+          media::VideoPixelFormatToString(mInputLayout->format()).c_str());
     mInputFormatConverter =
             FormatConverter::Create(inputFormat, mVisibleSize, kInputBufferCount, mInputCodedSize);
     if (!mInputFormatConverter) {
@@ -824,7 +799,8 @@ bool V4L2EncodeComponent::configureDevice(media::VideoCodecProfile outputProfile
 
     // When encoding H.264 we want to prepend SPS and PPS to each IDR for resilience. Some
     // devices support this through the V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR control.
-    // Otherwise we have to cache the latest SPS and PPS and inject these manually.
+    // TODO(b/161495502): V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR is currently not supported
+    // yet, just log a warning if the operation was unsuccessful for now.
     if (mDevice->IsCtrlExposed(V4L2_CID_MPEG_VIDEO_H264_SPS_PPS_BEFORE_IDR)) {
         if (!mDevice->SetExtCtrls(
                     V4L2_CTRL_CLASS_MPEG,
@@ -832,11 +808,9 @@ bool V4L2EncodeComponent::configureDevice(media::VideoCodecProfile outputProfile
             ALOGE("Failed to configure device to prepend SPS and PPS to each IDR");
             return false;
         }
-        mInjectParamsBeforeIDR = false;
         ALOGV("Device supports prepending SPS and PPS to each IDR");
     } else {
-        mInjectParamsBeforeIDR = true;
-        ALOGV("Device doesn't support prepending SPS and PPS to IDR, injecting manually.");
+        ALOGW("Device doesn't support prepending SPS and PPS to IDR");
     }
 
     std::vector<media::V4L2ExtCtrl> h264Ctrls;
@@ -1102,8 +1076,8 @@ bool V4L2EncodeComponent::encode(C2ConstGraphicBlock block, uint64_t index, int6
         startDevicePoll();
     }
 
-    // Allocate and queue all buffers on the output queue. These buffers will be used to store the
-    // encoded bitstreams.
+    // Queue all buffers on the output queue. These buffers will be used to store the encoded
+    // bitstreams.
     while (mOutputQueue->FreeBuffersCount() > 0) {
         if (!enqueueOutputBuffer()) return false;
     }
@@ -1154,7 +1128,8 @@ void V4L2EncodeComponent::flush() {
     }
 
     // Return all buffers to the input format convertor and clear all references to graphic blocks
-    // in the input queue.
+    // in the input queue. We don't need to clear the output map as those buffers will still be
+    // used.
     for (auto& it : mInputBuffersMap) {
         if (mInputFormatConverter && it.second) {
             mInputFormatConverter->returnBlock(it.first);
@@ -1190,7 +1165,10 @@ std::shared_ptr<C2LinearBlock> V4L2EncodeComponent::fetchOutputBlock() {
     ALOGV("Fetching linear block (size: %u)", mOutputBufferSize);
     std::shared_ptr<C2LinearBlock> outputBlock;
     c2_status_t status = mOutputBlockPool->fetchLinearBlock(
-            mOutputBufferSize, {C2MemoryUsage::CPU_READ, C2MemoryUsage::CPU_WRITE}, &outputBlock);
+            mOutputBufferSize,
+            C2MemoryUsage(C2MemoryUsage::CPU_READ |
+                          static_cast<uint64_t>(BufferUsage::VIDEO_ENCODER)),
+            &outputBlock);
     if (status != C2_OK) {
         ALOGE("Failed to fetch linear block (error: %d)", status);
         reportError(status);
@@ -1232,6 +1210,12 @@ void V4L2EncodeComponent::onInputBufferDone(uint64_t index) {
     while (!mOutputWorkQueue.empty() && isWorkDone(*mOutputWorkQueue.front())) {
         reportWork(std::move(mOutputWorkQueue.front()));
         mOutputWorkQueue.pop_front();
+    }
+
+    // We might have been waiting for input buffers to be returned after draining finished.
+    if (mEncoderState == EncoderState::DRAINING && mOutputWorkQueue.empty()) {
+        ALOGV("Draining done");
+        mEncoderState = EncoderState::WAITING_FOR_INPUT_BUFFERS;
     }
 
     // If we previously used up all input queue buffers we can start encoding again now.
@@ -1296,9 +1280,9 @@ void V4L2EncodeComponent::onOutputBufferDone(uint32_t payloadSize, bool keyFrame
     }
     work->worklets.front()->output.buffers.emplace_back(buffer);
 
-    // Return all completed work items. The work item might have been waiting for it's input buffer
-    // to be returned, in which case we can report it as completed now. As input buffers are not
-    // necessarily returned in order we might be able to return multiple ready work items now.
+    // We can report the work item as completed if its associated input buffer has also been
+    // released. As output buffers are not necessarily returned in order we might be able to return
+    // multiple ready work items now.
     while (!mOutputWorkQueue.empty() && isWorkDone(*mOutputWorkQueue.front())) {
         reportWork(std::move(mOutputWorkQueue.front()));
         mOutputWorkQueue.pop_front();
@@ -1306,7 +1290,7 @@ void V4L2EncodeComponent::onOutputBufferDone(uint32_t payloadSize, bool keyFrame
 }
 
 C2Work* V4L2EncodeComponent::getWorkByIndex(uint64_t index) {
-    ALOGD("%s(): getting work item (index: %" PRIu64 ")", __func__, index);
+    ALOGV("%s(): getting work item (index: %" PRIu64 ")", __func__, index);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
 
     auto it = std::find_if(mOutputWorkQueue.begin(), mOutputWorkQueue.end(),
@@ -1321,7 +1305,7 @@ C2Work* V4L2EncodeComponent::getWorkByIndex(uint64_t index) {
 }
 
 C2Work* V4L2EncodeComponent::getWorkByTimestamp(int64_t timestamp) {
-    ALOGD("%s(): getting work item (timestamp: %" PRId64 ")", __func__, timestamp);
+    ALOGV("%s(): getting work item (timestamp: %" PRId64 ")", __func__, timestamp);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(timestamp >= 0);
 
@@ -1342,23 +1326,26 @@ C2Work* V4L2EncodeComponent::getWorkByTimestamp(int64_t timestamp) {
 }
 
 bool V4L2EncodeComponent::isWorkDone(const C2Work& work) const {
-    ALOGD("%s()", __func__);
+    ALOGV("%s()", __func__);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
 
     if ((work.input.flags & C2FrameData::FLAG_END_OF_STREAM) &&
         !(work.worklets.front()->output.flags & C2FrameData::FLAG_END_OF_STREAM)) {
-        ALOGV("Work item is marked as EOS but draining has not finished yet");
+        ALOGV("Work item %" PRIu64 " is marked as EOS but draining has not finished yet",
+              work.input.ordinal.frameIndex.peeku());
         return false;
     }
 
     if (!work.input.buffers.empty() && work.input.buffers.front()) {
-        ALOGV("Input buffer associated with work item not returned yet");
+        ALOGV("Input buffer associated with work item %" PRIu64 " not returned yet",
+              work.input.ordinal.frameIndex.peeku());
         return false;
     }
 
     // If the work item had an input buffer to be encoded, it should have an output buffer set.
     if (!work.input.buffers.empty() && work.worklets.front()->output.buffers.empty()) {
-        ALOGV("Output buffer associated with work item not returned yet");
+        ALOGV("Output buffer associated with work item %" PRIu64 " not returned yet",
+              work.input.ordinal.frameIndex.peeku());
         return false;
     }
 
@@ -1423,18 +1410,14 @@ void V4L2EncodeComponent::serviceDeviceTask(bool /*event*/) {
         return;
     }
 
-    // Dequeue completed output (VIDEO_CAPTURE) buffers, and recycle to the free list. We dequeue
-    // from the output queue first. Otherwise there is a very small change that a drain is completed
-    // between dequeuing from input and output queue, which would cause us to call OnDrainDone()
-    // without all input buffers being returned yet. This is not a strict requirement but makes the
-    // OnDrainDone() function a lot simpler.
-    while (mOutputQueue->QueuedBuffersCount() > 0) {
-        if (!dequeueOutputBuffer()) break;
-    }
-
     // Dequeue completed input (VIDEO_OUTPUT) buffers, and recycle to the free list.
     while (mInputQueue->QueuedBuffersCount() > 0) {
         if (!dequeueInputBuffer()) break;
+    }
+
+    // Dequeue completed output (VIDEO_CAPTURE) buffers, and recycle to the free list.
+    while (mOutputQueue->QueuedBuffersCount() > 0) {
+        if (!dequeueOutputBuffer()) break;
     }
 
     ALOGV("%s() - done", __func__);
@@ -1507,13 +1490,26 @@ bool V4L2EncodeComponent::enqueueOutputBuffer() {
         return false;
     }
 
-    size_t buffer_id = buffer->BufferId();
-    if (!std::move(*buffer).QueueMMap()) {
-        ALOGE("Failed to queue auto buffer using QueueMMap");
+    std::shared_ptr<C2LinearBlock> outputBlock = fetchOutputBlock();
+    if (!outputBlock) {
+        ALOGE("Failed to fetch output block");
+        reportError(C2_CORRUPTED);
         return false;
     }
 
-    ALOGV("%s(): Queued buffer in output queue (bufferId: %zu)", __func__, buffer_id);
+    size_t bufferId = buffer->BufferId();
+
+    std::vector<int> fds;
+    fds.push_back(outputBlock->handle()->data[0]);
+    if (!std::move(*buffer).QueueDMABuf(fds)) {
+        ALOGE("Failed to queue output buffer using QueueDMABuf");
+        reportError(C2_CORRUPTED);
+        return false;
+    }
+
+    ALOG_ASSERT(!mOutputBuffersMap[bufferId]);
+    mOutputBuffersMap[bufferId] = std::move(outputBlock);
+    ALOGV("%s(): Queued buffer in output queue (bufferId: %zu)", __func__, bufferId);
     return true;
 }
 
@@ -1575,30 +1571,20 @@ bool V4L2EncodeComponent::dequeueOutputBuffer() {
           ", bufferId: %zu, data size: %zu, EOS: %d)",
           timestamp.InMicroseconds(), buffer->BufferId(), encodedDataSize, buffer->IsLast());
 
-    // If the output buffer contains encoded data we need to allocate a new output block and copy
-    // the encoded buffer data.
-    // TODO(dstaessens): Avoid always performing copy while outputting buffers.
-    if (encodedDataSize > 0) {
-        std::shared_ptr<C2LinearBlock> outputBlock = fetchOutputBlock();
-        if (!outputBlock) {
-            ALOGE("Failed to create output block");
-            reportError(C2_CORRUPTED);
-            return false;
-        }
-        size_t outputDataSize = copyIntoOutputBuffer(buffer, *outputBlock);
-        if (outputDataSize == 0) {
-            ALOGE("Invalid output buffer size");
-            reportError(C2_CORRUPTED);
-            return false;
-        }
+    if (!mOutputBuffersMap[buffer->BufferId()]) {
+        ALOGE("Failed to find output block associated with output buffer");
+        reportError(C2_CORRUPTED);
+        return false;
+    }
 
-        onOutputBufferDone(outputDataSize, buffer->IsKeyframe(), timestamp.InMicroseconds(),
-                           outputBlock);
+    std::shared_ptr<C2LinearBlock> block = std::move(mOutputBuffersMap[buffer->BufferId()]);
+    if (encodedDataSize > 0) {
+        onOutputBufferDone(encodedDataSize, buffer->IsKeyframe(), timestamp.InMicroseconds(),
+                           std::move(block));
     }
 
     // If the buffer is marked as last and we were flushing the encoder, flushing is now done.
     if ((mEncoderState == EncoderState::DRAINING) && buffer->IsLast()) {
-        ALOG_ASSERT(mInputQueue->QueuedBuffersCount() == 0);
         onDrainDone(true);
 
         // Start the encoder again.
@@ -1612,8 +1598,7 @@ bool V4L2EncodeComponent::dequeueOutputBuffer() {
         }
     }
 
-    // We copied the result into an output block, so we can immediately free the output buffer and
-    // enqueue it again so it can be reused.
+    // Queue a new output buffer to replace the one we dequeued.
     buffer = nullptr;
     enqueueOutputBuffer();
 
@@ -1641,6 +1626,7 @@ bool V4L2EncodeComponent::createOutputBuffers() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(!mOutputQueue->IsStreaming());
+    ALOG_ASSERT(mOutputBuffersMap.empty());
 
     // Fetch the output block pool.
     C2BlockPool::local_id_t poolId = mInterface->getBlockPoolId();
@@ -1650,13 +1636,15 @@ bool V4L2EncodeComponent::createOutputBuffers() {
         return false;
     }
 
-    // Memory is allocated here to decode into. The encoded result is copied to a blockpool buffer
-    // upon dequeuing.
-    if (mOutputQueue->AllocateBuffers(kOutputBufferCount, V4L2_MEMORY_MMAP) < kOutputBufferCount) {
-        ALOGE("Failed to allocate V4L2 output buffers.");
+    // No memory is allocated here, we just generate a list of buffers on the output queue, which
+    // will hold memory handles to the real buffers.
+    if (mOutputQueue->AllocateBuffers(kOutputBufferCount, V4L2_MEMORY_DMABUF) <
+        kOutputBufferCount) {
+        ALOGE("Failed to create V4L2 output buffers.");
         return false;
     }
 
+    mOutputBuffersMap.resize(mOutputQueue->AllocatedBuffersCount());
     return true;
 }
 
@@ -1677,101 +1665,8 @@ void V4L2EncodeComponent::destroyOutputBuffers() {
 
     if (!mOutputQueue || mOutputQueue->AllocatedBuffersCount() == 0) return;
     mOutputQueue->DeallocateBuffers();
+    mOutputBuffersMap.clear();
     mOutputBlockPool.reset();
-}
-
-size_t V4L2EncodeComponent::copyIntoOutputBuffer(
-        scoped_refptr<media::V4L2ReadableBuffer> outputBuffer, const C2LinearBlock& outputBlock) {
-    ALOGV("%s()", __func__);
-    ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
-
-    const uint8_t* src = static_cast<const uint8_t*>(outputBuffer->GetPlaneMapping(0)) +
-                         outputBuffer->GetPlaneDataOffset(0);
-    size_t srcSize = outputBuffer->GetPlaneBytesUsed(0) - outputBuffer->GetPlaneDataOffset(0);
-
-    // TODO(dstaessens): Investigate mapping output block directly.
-    int dupFd = dup(outputBlock.handle()->data[0]);
-    if (dupFd < 0) {
-        ALOGE("Failed to duplicate output buffer handle (errno: %d)", errno);
-        reportError(C2_CORRUPTED);
-        return 0;
-    }
-    ::base::SharedMemoryHandle shmHandle(::base::FileDescriptor(dupFd, true), 0u,
-                                         ::base::UnguessableToken::Create());
-    auto dest =
-            std::make_unique<media::UnalignedSharedMemory>(shmHandle, outputBlock.size(), false);
-    if (!dest->MapAt(outputBlock.offset(), outputBlock.size())) {
-        ALOGE("Failed to map output buffer");
-        return 0;
-    }
-
-    uint8_t* dstPtr = static_cast<uint8_t*>(dest->memory());
-    size_t remainingDstSize = dest->size();
-
-    if (!mInjectParamsBeforeIDR) {
-        if (srcSize <= remainingDstSize) {
-            memcpy(dstPtr, src, srcSize);
-            return srcSize;
-        } else {
-            ALOGE("Output data did not fit in the BitstreamBuffer");
-            return 0;
-        }
-    }
-
-    // Cache the newest SPS and PPS found in the stream, and inject them before each IDR found.
-    media::H264Parser parser;
-    parser.SetStream(src, srcSize);
-    media::H264NALU nalu;
-    // TODO(dstaessens): Split SPS and PPS case?
-    bool streamParamsFound = false;
-
-    while (parser.AdvanceToNextNALU(&nalu) == media::H264Parser::kOk) {
-        // nalu.size is always without the start code, regardless of the NALU type.
-        if (nalu.size + kH264StartCodeSize > remainingDstSize) {
-            ALOGE("Output data did not fit in the BitstreamBuffer");
-            break;
-        }
-
-        switch (nalu.nal_unit_type) {
-        case media::H264NALU::kSPS:
-            mCachedSPS.resize(nalu.size);
-            memcpy(mCachedSPS.data(), nalu.data, nalu.size);
-            streamParamsFound = true;
-            ALOGE("Updated cached SPS");
-            break;
-        case media::H264NALU::kPPS:
-            mCachedPPS.resize(nalu.size);
-            memcpy(mCachedPPS.data(), nalu.data, nalu.size);
-            streamParamsFound = true;
-            ALOGE("Updated cached PPS");
-            break;
-        case media::H264NALU::kIDRSlice:
-            if (streamParamsFound) {
-                ALOGE("Not injecting stream header before IDR, already present");
-                break;
-            }
-            // Only inject if we have both headers cached, and enough space for both the headers
-            // including the H.264 start codes and the NALU itself.
-            size_t h264HeaderSize =
-                    mCachedSPS.size() + mCachedPPS.size() + (2 * kH264StartCodeSize);
-            if (mCachedSPS.empty() || mCachedPPS.empty() ||
-                (h264HeaderSize + nalu.size + kH264StartCodeSize > remainingDstSize)) {
-                ALOGE("Not enough space to inject a stream header before IDR");
-                break;
-            }
-
-            copyNALUPrependingStartCode(mCachedSPS.data(), mCachedSPS.size(), &dstPtr,
-                                        &remainingDstSize);
-            copyNALUPrependingStartCode(mCachedPPS.data(), mCachedPPS.size(), &dstPtr,
-                                        &remainingDstSize);
-            ALOGV("Stream header injected before IDR");
-            break;
-        }
-
-        copyNALUPrependingStartCode(nalu.data, nalu.size, &dstPtr, &remainingDstSize);
-    }
-
-    return dest->size() - remainingDstSize;
 }
 
 void V4L2EncodeComponent::reportError(c2_status_t error) {
