@@ -27,8 +27,6 @@ public:
     c2_status_t status() const { return mInitStatus; }
     C2BlockPool::local_id_t getBlockPoolId() const { return mOutputBlockPoolIds->m.values[0]; }
     std::optional<VideoCodec> getVideoCodec() const { return mVideoCodec; }
-    media::Size getMaxSize() const { return mMaxSize; }
-    media::Size getMinSize() const { return mMinSize; }
 
     static uint32_t getOutputDelay(VideoCodec codec);
 
@@ -96,8 +94,6 @@ private:
 
     c2_status_t mInitStatus;
     std::optional<VideoCodec> mVideoCodec;
-    media::Size mMinSize;
-    media::Size mMaxSize;
 };
 
 }  // namespace android

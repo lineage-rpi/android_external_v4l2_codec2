@@ -318,7 +318,7 @@ V4L2DecodeInterface::V4L2DecodeInterface(const std::string& name,
 }
 
 size_t V4L2DecodeInterface::getInputBufferSize() const {
-    return calculateInputBufferSize(getMaxSize().GetArea());
+    return calculateInputBufferSize(mSize->width * mSize->height);
 }
 
 c2_status_t V4L2DecodeInterface::queryColorAspects(
