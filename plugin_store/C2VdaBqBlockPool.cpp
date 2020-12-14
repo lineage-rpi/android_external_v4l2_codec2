@@ -709,13 +709,6 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             }
             return C2_TIMED_OUT;
         }
-        if (status != BUFFER_NEEDS_REALLOCATION) {
-            // The dequeued slot has a pre-allocated buffer whose size and format is as same as
-            // currently requested, so there is no BUFFER_NEEDS_REALLOCATION flag. However since the
-            // buffer reference is already dropped, still call requestBuffer to re-allocate then.
-            // Add a debug note here for tracking.
-            ALOGD("dequeued a new slot index without BUFFER_NEEDS_REALLOCATION flag.");
-        }
 
         // Call requestBuffer to allocate buffer for the slot and obtain the reference.
         sp<GraphicBuffer> slotBuffer = new GraphicBuffer();
