@@ -603,8 +603,8 @@ private:
     sp<EventNotifier> mFetchBufferNotifier;
 
     std::mutex mBufferReleaseMutex;
-    // Set to true when the buffer release event is triggered after dequeueing
-    // buffer from IGBP times out.
+    // Set to true when the buffer release event is triggered after dequeueing buffer from IGBP
+    // times out. Reset when fetching new slot times out, or |mNotifyBlockAvailableCb| is executed.
     bool mBufferReleasedAfterTimedOut GUARDED_BY(mBufferReleaseMutex) = false;
     // The callback to notify the caller the buffer is available.
     ::base::OnceClosure mNotifyBlockAvailableCb GUARDED_BY(mBufferReleaseMutex);
@@ -855,6 +855,7 @@ void C2VdaBqBlockPool::Impl::onEventNotified() {
 
         mBufferReleasedAfterTimedOut = true;
         if (mNotifyBlockAvailableCb) {
+            mBufferReleasedAfterTimedOut = false;
             outputCb = std::move(mNotifyBlockAvailableCb);
         }
     }
@@ -1184,6 +1185,7 @@ bool C2VdaBqBlockPool::Impl::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
         // If there is any buffer released after dequeueBuffer() timed out, then we could notify the
         // caller directly.
         if (mBufferReleasedAfterTimedOut) {
+            mBufferReleasedAfterTimedOut = false;
             outputCb = std::move(cb);
         } else {
             mNotifyBlockAvailableCb = std::move(cb);
