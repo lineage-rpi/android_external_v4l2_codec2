@@ -105,7 +105,7 @@ public:
             return FAILED_TRANSACTION;
         }
         if (status != android::NO_ERROR) {
-            ALOGE("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
@@ -124,7 +124,7 @@ public:
             return FAILED_TRANSACTION;
         }
         if (status != android::NO_ERROR) {
-            ALOGE("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
@@ -162,7 +162,7 @@ public:
         }
         if (status != android::NO_ERROR && status != BUFFER_NEEDS_REALLOCATION &&
             status != android::TIMED_OUT) {
-            ALOGE("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
@@ -180,7 +180,7 @@ public:
             return FAILED_TRANSACTION;
         }
         if (status != android::NO_ERROR) {
-            ALOGE("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
@@ -215,7 +215,7 @@ public:
             return FAILED_TRANSACTION;
         }
         if (status != android::NO_ERROR) {
-            ALOGE("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
@@ -240,7 +240,7 @@ public:
             return FAILED_TRANSACTION;
         }
         if (status != android::NO_ERROR) {
-            ALOGE("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
@@ -273,7 +273,7 @@ public:
             return FAILED_TRANSACTION;
         }
         if (status != android::NO_ERROR) {
-            ALOGW("%s() failed: %d", __func__, status);
+            ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
     }
