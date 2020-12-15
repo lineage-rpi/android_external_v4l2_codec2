@@ -18,6 +18,7 @@
 #include <android/hardware/graphics/common/1.0/types.h>
 #include <base/bind.h>
 #include <base/bind_helpers.h>
+#include <cutils/properties.h>
 #include <log/log.h>
 #include <media/stagefright/MediaDefs.h>
 #include <ui/GraphicBuffer.h>
@@ -194,6 +195,9 @@ constexpr size_t kOutputBufferCount = 2;
 }  // namespace
 
 // static
+std::atomic<int32_t> V4L2EncodeComponent::sConcurrentInstances = 0;
+
+// static
 std::unique_ptr<V4L2EncodeComponent::InputFrame> V4L2EncodeComponent::InputFrame::Create(
         const C2ConstGraphicBlock& block) {
     std::vector<int> fds;
@@ -210,6 +214,17 @@ std::shared_ptr<C2Component> V4L2EncodeComponent::create(
         C2String name, c2_node_id_t id, std::shared_ptr<C2ReflectorHelper> helper,
         C2ComponentFactory::ComponentDeleter deleter) {
     ALOGV("%s(%s)", __func__, name.c_str());
+
+    static const int32_t kMaxConcurrentInstances =
+            property_get_int32("debug.v4l2_codec2.encode.concurrent-instances", -1);
+
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    if (kMaxConcurrentInstances >= 0 && sConcurrentInstances.load() >= kMaxConcurrentInstances) {
+        ALOGW("Cannot create additional encoder, maximum number of instances reached: %d",
+              kMaxConcurrentInstances);
+        return nullptr;
+    }
 
     auto interface = std::make_shared<V4L2EncodeInterface>(name, std::move(helper));
     if (interface->status() != C2_OK) {
@@ -228,6 +243,8 @@ V4L2EncodeComponent::V4L2EncodeComponent(C2String name, c2_node_id_t id,
         mInterface(std::move(interface)),
         mComponentState(ComponentState::LOADED) {
     ALOGV("%s(%s)", __func__, name.c_str());
+
+    sConcurrentInstances.fetch_add(1, std::memory_order_relaxed);
 }
 
 V4L2EncodeComponent::~V4L2EncodeComponent() {
@@ -243,6 +260,8 @@ V4L2EncodeComponent::~V4L2EncodeComponent() {
                                    &mWeakThisFactory));
         mEncoderThread.Stop();
     }
+
+    sConcurrentInstances.fetch_sub(1, std::memory_order_relaxed);
     ALOGV("%s(): done", __func__);
 }
 
