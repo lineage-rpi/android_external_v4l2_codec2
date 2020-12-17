@@ -145,9 +145,8 @@ std::atomic<int32_t> V4L2DecodeComponent::sConcurrentInstances = 0;
 std::shared_ptr<C2Component> V4L2DecodeComponent::create(
         const std::string& name, c2_node_id_t id, const std::shared_ptr<C2ReflectorHelper>& helper,
         C2ComponentFactory::ComponentDeleter deleter) {
-    static const int32_t kMaxConcurrentInstances = []() -> int32_t {
-        return property_get_int32("debug.v4l2_codec2.decode.concurrent-instances", -1);
-    }();
+    static const int32_t kMaxConcurrentInstances =
+            property_get_int32("debug.v4l2_codec2.decode.concurrent-instances", -1);
     static std::mutex mutex;
 
     std::lock_guard<std::mutex> lock(mutex);
