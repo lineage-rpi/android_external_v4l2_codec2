@@ -69,7 +69,7 @@ std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(
     }
     size_t buffer_size = visible_size.width * visible_size.height * 3 / 2;
 
-    std::unique_ptr<InputFileStream> input_file(new InputFileStream(input_path));
+    std::unique_ptr<CachedInputFileStream> input_file(new CachedInputFileStream(input_path));
     if (!input_file->IsValid()) {
         ALOGE("Failed to open file: %s", input_path.c_str());
         return nullptr;
@@ -103,7 +103,7 @@ std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(
 }
 
 MediaCodecEncoder::MediaCodecEncoder(AMediaCodec* codec,
-                                     std::unique_ptr<InputFileStream> input_file, Size size,
+                                     std::unique_ptr<CachedInputFileStream> input_file, Size size,
                                      size_t buffer_size, size_t num_total_frames)
       : kVisibleSize(size),
         kBufferSize(buffer_size),

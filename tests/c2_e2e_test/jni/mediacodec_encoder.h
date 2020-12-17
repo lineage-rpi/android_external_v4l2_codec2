@@ -54,8 +54,8 @@ public:
     void set_run_at_fps(bool run_at_fps);
 
 private:
-    MediaCodecEncoder(AMediaCodec* codec, std::unique_ptr<InputFileStream> inputFile, Size size,
-                      size_t bufferSize, size_t numTotalFrames);
+    MediaCodecEncoder(AMediaCodec* codec, std::unique_ptr<CachedInputFileStream> inputFile,
+                      Size size, size_t bufferSize, size_t numTotalFrames);
 
     // Read the content from the |input_file_| and feed into the input buffer.
     // |index| is the index of the target input buffer.
@@ -84,7 +84,7 @@ private:
     size_t num_encoded_frames_;
     // The input video raw stream file. The file size must be the multiple of
     // |kBufferSize|.
-    std::unique_ptr<InputFileStream> input_file_;
+    std::unique_ptr<CachedInputFileStream> input_file_;
     // The target output bitrate.
     int bitrate_ = 192000;
     // The target output framerate.

@@ -70,20 +70,26 @@ public:
     // Get the size of the file.
     size_t GetLength();
     // Set position to the beginning of the file.
-    void Rewind();
+    virtual void Rewind();
 
 protected:
     std::ifstream file_;
 };
 
 // Wrapper of std::ifstream for reading binary file.
-class InputFileStream : public InputFile {
+class CachedInputFileStream : public InputFile {
 public:
-    explicit InputFileStream(std::string file_path);
+    explicit CachedInputFileStream(std::string file_path);
 
     // Read the given number of bytes to the buffer. Return the number of bytes
     // read or -1 on error.
     size_t Read(char* buffer, size_t size);
+
+    void Rewind() override;
+
+private:
+    std::vector<char> data_;
+    size_t position_ = 0;
 };
 
 // Wrapper of std::ifstream for reading ASCII file.

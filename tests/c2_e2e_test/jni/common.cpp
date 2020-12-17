@@ -46,14 +46,22 @@ void InputFile::Rewind() {
     file_.seekg(0);
 }
 
-InputFileStream::InputFileStream(std::string file_path)
-      : InputFile(file_path, std::ifstream::binary) {}
+CachedInputFileStream::CachedInputFileStream(std::string file_path)
+      : InputFile(file_path, std::ifstream::binary) {
+    if (IsValid()) {
+        data_.resize(GetLength());
+        file_.read(data_.data(), GetLength());
+    }
+}
 
-size_t InputFileStream::Read(char* buffer, size_t size) {
-    file_.read(buffer, size);
-    if (file_.fail()) return -1;
+size_t CachedInputFileStream::Read(char* buffer, size_t size) {
+    memcpy(buffer, data_.data() + position_, size);
+    position_ += size;
+    return size;
+}
 
-    return file_.gcount();
+void CachedInputFileStream::Rewind() {
+    position_ = 0;
 }
 
 InputFileASCII::InputFileASCII(std::string file_path) : InputFile(file_path) {}
