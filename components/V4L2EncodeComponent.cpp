@@ -674,8 +674,9 @@ bool V4L2EncodeComponent::initializeEncoder() {
     // of the device's preferred formats in combination with an input format convertor.
     if (!configureInputFormat(kInputPixelFormat)) return false;
 
-    // Create input and output buffers.
-    if (!createInputBuffers() || !createOutputBuffers()) return false;
+    // Create input buffers. Output buffers will be created later after the client
+    // configures which block pool to use.
+    if (!createInputBuffers()) return false;
 
     // Configure the device, setting all required controls.
     uint8_t level = c2LevelToV4L2Level(mInterface->getOutputLevel());
@@ -1086,6 +1087,14 @@ bool V4L2EncodeComponent::encode(C2ConstGraphicBlock block, uint64_t index, int6
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mEncoderState == EncoderState::ENCODING);
+
+    // By the time we get an input buffer, the output block pool should be configured.
+    if (mOutputBuffersMap.empty()) {
+        if (!createOutputBuffers()) {
+            reportError(C2_CORRUPTED);
+            return false;
+        }
+    }
 
     // Update dynamic encoding parameters (bitrate, framerate, key frame) if requested.
     if (!updateEncodingParameters()) return false;
@@ -1716,6 +1725,10 @@ bool V4L2EncodeComponent::createOutputBuffers() {
 
     // Fetch the output block pool.
     C2BlockPool::local_id_t poolId = mInterface->getBlockPoolId();
+    if (poolId == C2BlockPool::BASIC_LINEAR) {
+        ALOGW("Using unoptimized linear block pool");
+    }
+
     c2_status_t status = GetCodec2BlockPool(poolId, shared_from_this(), &mOutputBlockPool);
     if (status != C2_OK || !mOutputBlockPool) {
         ALOGE("Failed to get output block pool, error: %d", status);
