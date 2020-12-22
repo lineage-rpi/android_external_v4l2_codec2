@@ -329,6 +329,13 @@ void V4L2Decoder::flush() {
     mInputQueue->Streamon();
     mOutputQueue->Streamon();
 
+    // If there is no free buffer at mOutputQueue, tryFetchVideoFrame() should be triggerred after
+    // a buffer is DQBUF from output queue. Now all the buffers are dropped at mOutputQueue, we
+    // have to trigger tryFetchVideoFrame() here.
+    if (mVideoFramePool) {
+        tryFetchVideoFrame();
+    }
+
     if (!mDevice->StartPolling(::base::BindRepeating(&V4L2Decoder::serviceDeviceTask, mWeakThis),
                                ::base::BindRepeating(&V4L2Decoder::onError, mWeakThis))) {
         ALOGE("Failed to start polling V4L2 device.");
