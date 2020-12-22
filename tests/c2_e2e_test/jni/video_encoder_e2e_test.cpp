@@ -18,6 +18,7 @@
 #include <log/log.h>
 
 #include "common.h"
+#include "e2e_test_jni.h"
 #include "mediacodec_encoder.h"
 
 namespace android {
@@ -57,7 +58,8 @@ struct CmdlineArgs {
 
 class C2VideoEncoderTestEnvironment : public testing::Environment {
 public:
-    explicit C2VideoEncoderTestEnvironment(const CmdlineArgs& args) : args_(args) {}
+    explicit C2VideoEncoderTestEnvironment(const CmdlineArgs& args, ConfigureCallback* cb)
+          : args_(args), configure_cb_(cb) {}
 
     void SetUp() override { ParseTestStreamData(); }
 
@@ -150,8 +152,11 @@ public:
     size_t num_encoded_frames() const { return args_.num_encoded_frames; }
     bool use_sw_encoder() const { return args_.use_sw_encoder; }
 
+    ConfigureCallback* configure_cb() const { return configure_cb_; }
+
 private:
     const CmdlineArgs args_;
+    ConfigureCallback* configure_cb_;
 
     Size visible_size_;
     std::string input_file_path_;
@@ -184,6 +189,8 @@ protected:
         encoder_ = MediaCodecEncoder::Create(
                 g_env->input_file_path(), g_env->visible_size(), g_env->use_sw_encoder());
         ASSERT_TRUE(encoder_);
+        g_env->configure_cb()->OnCodecReady(encoder_.get());
+
         encoder_->Rewind();
 
         ASSERT_TRUE(encoder_->Configure(static_cast<int32_t>(g_env->requested_bitrate()),
@@ -360,12 +367,13 @@ bool GetOption(int argc, char** argv, android::CmdlineArgs* args) {
     return true;
 }
 
-int RunEncoderTests(char** test_args, int test_args_count) {
+int RunEncoderTests(char** test_args, int test_args_count, android::ConfigureCallback* cb) {
     android::CmdlineArgs args;
     if (!GetOption(test_args_count, test_args, &args)) return EXIT_FAILURE;
 
     android::g_env = reinterpret_cast<android::C2VideoEncoderTestEnvironment*>(
-            testing::AddGlobalTestEnvironment(new android::C2VideoEncoderTestEnvironment(args)));
+            testing::AddGlobalTestEnvironment(
+                    new android::C2VideoEncoderTestEnvironment(args, cb)));
     testing::InitGoogleTest(&test_args_count, test_args);
     return RUN_ALL_TESTS();
 }

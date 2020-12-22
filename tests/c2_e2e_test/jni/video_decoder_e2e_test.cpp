@@ -259,7 +259,7 @@ protected:
                                              g_env->loop(), g_env->use_fake_renderer());
 
         ASSERT_TRUE(decoder_);
-        g_env->configure_cb()->OnDecoderReady(decoder_.get());
+        g_env->configure_cb()->OnCodecReady(decoder_.get());
 
         decoder_->Rewind();
 
@@ -289,7 +289,7 @@ protected:
             EXPECT_EQ(g_env->num_frames(), decoded_frames_);
         }
 
-        g_env->configure_cb()->OnDecoderReady(nullptr);
+        g_env->configure_cb()->OnCodecReady(nullptr);
         decoder_.reset();
     }
 
