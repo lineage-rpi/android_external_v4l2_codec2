@@ -99,7 +99,8 @@ c2_status_t V4L2ComponentFactory::createInterface(
 
 }  // namespace android
 
-extern "C" ::C2ComponentFactory* CreateCodec2Factory(const char* componentName) {
+__attribute__((cfi_canonical_jump_table)) extern "C" ::C2ComponentFactory* CreateCodec2Factory(
+        const char* componentName) {
     ALOGV("%s(%s)", __func__, componentName);
 
     if (!android::V4L2ComponentName::isValid(componentName)) {
@@ -111,7 +112,8 @@ extern "C" ::C2ComponentFactory* CreateCodec2Factory(const char* componentName) 
     return new android::V4L2ComponentFactory(componentName, isEncoder);
 }
 
-extern "C" void DestroyCodec2Factory(::C2ComponentFactory* factory) {
+__attribute__((cfi_canonical_jump_table)) extern "C" void DestroyCodec2Factory(
+        ::C2ComponentFactory* factory) {
     ALOGV("%s()", __func__);
     delete factory;
 }
