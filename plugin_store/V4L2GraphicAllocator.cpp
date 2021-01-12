@@ -94,6 +94,10 @@ public:
         return data->uniqueId;
     }
 
+    static bool isValid(const C2Handle* const handle) {
+        return getUniqueId(handle) != std::nullopt;
+    }
+
 private:
     struct ExtraData {
         uint32_t magic;
@@ -101,10 +105,6 @@ private:
     };
     constexpr static uint32_t kMagic = 'V4L2';
     constexpr static int kExtraDataNumInts = sizeof(ExtraData) / sizeof(int);
-
-    static bool isValid(const C2Handle* const handle) {
-        return getUniqueId(handle) != std::nullopt;
-    }
 
     static ExtraData* getExtraData(C2Handle* const handleWithId) {
         return const_cast<ExtraData*>(
@@ -177,6 +177,10 @@ c2_status_t V4L2GraphicAllocator::newGraphicAllocation(
 c2_status_t V4L2GraphicAllocator::priorGraphicAllocation(
         const C2Handle* handle, std::shared_ptr<C2GraphicAllocation>* allocation) {
     return mAllocator->priorGraphicAllocation(handle, allocation);
+}
+
+bool V4L2GraphicAllocator::checkHandle(const C2Handle* const handle) const {
+    return C2HandleWithId::isValid(handle);
 }
 
 // static

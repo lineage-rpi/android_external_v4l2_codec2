@@ -27,6 +27,7 @@ public:
                                      std::shared_ptr<C2GraphicAllocation>* allocation) override;
     c2_status_t priorGraphicAllocation(const C2Handle* handle,
                                        std::shared_ptr<C2GraphicAllocation>* allocation) override;
+    bool checkHandle(const C2Handle* const handle) const override;
 
     static std::optional<uint32_t> getIdFromC2HandleWithId(
             const C2Handle* const grallocHandleWithId);
