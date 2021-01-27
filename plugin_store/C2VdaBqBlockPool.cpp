@@ -30,8 +30,9 @@
 namespace android {
 namespace {
 
-// The wait time for acquire fence in milliseconds.
-constexpr int kFenceWaitTimeMs = 10;
+// The wait time for acquire fence in milliseconds. The normal display is 60Hz,
+// which period is 16ms. We choose 2x period as timeout.
+constexpr int kFenceWaitTimeMs = 32;
 
 }  // namespace
 
@@ -570,6 +571,9 @@ private:
                                         C2AndroidMemoryUsage androidUsage, uint32_t* generation,
                                         uint64_t* usage);
 
+    // Wait the fence. If any error occurs, cancel the buffer back to the producer.
+    status_t waitFence(int32_t slot, sp<Fence> fence);
+
     // Detaches all the tracked buffers from |mProducer|, and returns all the buffers.
     std::vector<std::shared_ptr<C2GraphicAllocation>> detachAndMoveTrackedBuffers();
     // Switches producer and transfers allocated buffers from old producer to the new one.
@@ -795,15 +799,9 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
 
     // Wait for acquire fence if we get one.
     if (*fence) {
-        // The underlying sync-file kernel API guarantees that fences will
-        // be signaled in a relative short, finite time.
-        status_t fenceStatus = (*fence)->waitForever(LOG_TAG);
+        // TODO(b/178770649): Move the fence waiting to the last point of returning buffer.
+        status_t fenceStatus = waitFence(*slot, *fence);
         if (fenceStatus != android::NO_ERROR) {
-            status_t cancelStatus = mProducer->cancelBuffer(*slot, *fence);
-            if (cancelStatus != android::NO_ERROR) {
-                return cancelStatus;
-            }
-            ALOGE("buffer fence wait error: %d", fenceStatus);
             return fenceStatus;
         }
 
@@ -857,16 +855,8 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint
 
     // Wait for acquire fence if we get one.
     if (fence) {
-        status_t fenceStatus = fence->wait(kFenceWaitTimeMs);
+        status_t fenceStatus = waitFence(slot, fence);
         if (fenceStatus != android::NO_ERROR) {
-            if (mProducer->cancelBuffer(slot, fence) != android::NO_ERROR) {
-                return C2_CORRUPTED;
-            }
-            if (fenceStatus == -ETIME) {  // fence wait timed out
-                ALOGV("%s(): buffer (slot=%d) fence wait timed out", __func__, slot);
-                return C2_TIMED_OUT;
-            }
-            ALOGE("buffer fence wait error: %d", fenceStatus);
             return asC2Error(fenceStatus);
         }
     }
@@ -891,6 +881,26 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint
     *generation = slotBuffer->getGenerationNumber();
     ALOGV("Obtained from temp buffer: generation = %u, usage = %" PRIu64 "", *generation, *usage);
     return C2_OK;
+}
+
+status_t C2VdaBqBlockPool::Impl::waitFence(int32_t slot, sp<Fence> fence) {
+    status_t fenceStatus = fence->wait(kFenceWaitTimeMs);
+    if (fenceStatus == android::NO_ERROR) {
+        return android::NO_ERROR;
+    }
+
+    status_t cancelStatus = mProducer->cancelBuffer(slot, fence);
+    if (cancelStatus != android::NO_ERROR) {
+        ALOGE("%s(): failed to cancelBuffer(slot=%d)", __func__, slot);
+        return cancelStatus;
+    }
+
+    if (fenceStatus == -ETIME) {  // fence wait timed out
+        ALOGV("%s(): buffer (slot=%d) fence wait timed out", __func__, slot);
+        return android::TIMED_OUT;
+    }
+    ALOGE("buffer fence wait error: %d", fenceStatus);
+    return fenceStatus;
 }
 
 void C2VdaBqBlockPool::Impl::setRenderCallback(
