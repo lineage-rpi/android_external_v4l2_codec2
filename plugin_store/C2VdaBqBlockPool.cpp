@@ -40,6 +40,11 @@ constexpr int kFenceWaitTimeMs = 32;
 
 using namespace std::chrono_literals;
 
+// We use the value of DRM handle as the unique ID of the graphic buffers.
+using unique_id_t = uint32_t;
+// Type for IGBP slot index.
+using slot_t = int32_t;
+
 using ::android::C2AndroidMemoryUsage;
 using ::android::Fence;
 using ::android::GraphicBuffer;
@@ -405,7 +410,7 @@ struct C2VdaBqBlockPoolData : public _C2BlockPoolData {
     // This type should be a different value than what _C2BlockPoolData::type_t has defined.
     static constexpr int kTypeVdaBufferQueue = TYPE_BUFFERQUEUE + 256;
 
-    C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
+    C2VdaBqBlockPoolData(uint64_t producerId, slot_t slotId, unique_id_t uniqueId,
                          std::weak_ptr<C2VdaBqBlockPool::Impl> pool);
     C2VdaBqBlockPoolData() = delete;
 
@@ -416,8 +421,8 @@ struct C2VdaBqBlockPoolData : public _C2BlockPoolData {
 
     bool mShared = false;  // whether is shared from component to client.
     const uint64_t mProducerId;
-    const int32_t mSlotId;
-    const uint32_t mUniqueId;
+    const slot_t mSlotId;
+    const unique_id_t mUniqueId;
     const std::weak_ptr<C2VdaBqBlockPool::Impl> mPool;
 };
 
@@ -443,20 +448,19 @@ c2_status_t MarkBlockPoolDataAsShared(const C2ConstGraphicBlock& sharedBlock) {
 // mapping from IGBP slot to C2Allocation.
 class TrackedGraphicBuffers {
 public:
-    using value_type = std::tuple<int32_t /* slotId */, uint32_t /* uniqueId */,
-                                  std::shared_ptr<C2GraphicAllocation> /* allocation */>;
+    using value_type = std::tuple<slot_t, unique_id_t, std::shared_ptr<C2GraphicAllocation>>;
 
     TrackedGraphicBuffers() = default;
     ~TrackedGraphicBuffers() = default;
 
-    void updateAllocation(uint32_t uniqueId, std::shared_ptr<C2GraphicAllocation> allocation) {
+    void updateAllocation(unique_id_t uniqueId, std::shared_ptr<C2GraphicAllocation> allocation) {
         ALOGV("%s(uniqueId=%u)", __func__, uniqueId);
         ALOG_ASSERT(allocation != nullptr);
 
         mUniqueId2Allocation[uniqueId] = std::move(allocation);
     }
 
-    void updateSlotBuffer(int32_t slotId, uint32_t uniqueId, sp<GraphicBuffer> slotBuffer) {
+    void updateSlotBuffer(slot_t slotId, unique_id_t uniqueId, sp<GraphicBuffer> slotBuffer) {
         ALOGV("%s(slotId=%d)", __func__, slotId);
         ALOG_ASSERT(slotBuffer != nullptr);
 
@@ -475,22 +479,22 @@ public:
 
     size_t size() const { return mUniqueId2Allocation.size(); }
 
-    bool hasUniqueId(uint32_t uniqueId) const {
+    bool hasUniqueId(unique_id_t uniqueId) const {
         return mUniqueId2Allocation.find(uniqueId) != mUniqueId2Allocation.end();
     }
 
-    bool hasSlotId(int32_t slotId) const {
+    bool hasSlotId(slot_t slotId) const {
         return mSlotId2GraphicBuffer.find(slotId) != mSlotId2GraphicBuffer.end();
     }
 
-    std::pair<uint32_t, sp<GraphicBuffer>> getGraphicBuffer(int32_t slotId) const {
+    std::pair<unique_id_t, sp<GraphicBuffer>> getGraphicBuffer(slot_t slotId) const {
         const auto iter = mSlotId2GraphicBuffer.find(slotId);
         ALOG_ASSERT(iter != mSlotId2GraphicBuffer.end());
 
         return iter->second;
     }
 
-    std::shared_ptr<C2GraphicAllocation> getAllocation(uint32_t uniqueId) const {
+    std::shared_ptr<C2GraphicAllocation> getAllocation(unique_id_t uniqueId) const {
         const auto iter = mUniqueId2Allocation.find(uniqueId);
         ALOG_ASSERT(iter != mUniqueId2Allocation.end());
         return iter->second;
@@ -507,8 +511,8 @@ public:
     }
 
 private:
-    std::map<int32_t, std::pair<uint32_t, sp<GraphicBuffer>>> mSlotId2GraphicBuffer;
-    std::map<uint32_t, std::shared_ptr<C2GraphicAllocation>> mUniqueId2Allocation;
+    std::map<slot_t, std::pair<unique_id_t, sp<GraphicBuffer>>> mSlotId2GraphicBuffer;
+    std::map<unique_id_t, std::shared_ptr<C2GraphicAllocation>> mUniqueId2Allocation;
 };
 
 class DrmHandleManager {
@@ -522,12 +526,12 @@ public:
         }
     }
 
-    std::optional<uint32_t> getHandle(int primeFd) {
+    std::optional<unique_id_t> getHandle(int primeFd) {
         if (!mRenderFd) {
             return std::nullopt;
         }
 
-        std::optional<uint32_t> handle = getDrmHandle(*mRenderFd, primeFd);
+        std::optional<unique_id_t> handle = getDrmHandle(*mRenderFd, primeFd);
         // Defer closing the handle until we don't need the buffer to keep the returned DRM handle
         // the same.
         if (handle) {
@@ -541,7 +545,7 @@ public:
             return;
         }
 
-        for (const uint32_t& handle : mHandles) {
+        for (const unique_id_t& handle : mHandles) {
             closeDrmHandle(*mRenderFd, handle);
         }
         mHandles.clear();
@@ -549,7 +553,7 @@ public:
 
 private:
     std::optional<int> mRenderFd;
-    std::set<uint32_t> mHandles;
+    std::set<unique_id_t> mHandles;
 };
 
 class C2VdaBqBlockPool::Impl : public std::enable_shared_from_this<C2VdaBqBlockPool::Impl>,
@@ -572,7 +576,7 @@ public:
     c2_status_t requestNewBufferSet(int32_t bufferCount, uint32_t width, uint32_t height,
                                     uint32_t format, C2MemoryUsage usage);
     bool setNotifyBlockAvailableCb(::base::OnceClosure cb);
-    std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
+    std::optional<unique_id_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
 
 private:
     friend struct C2VdaBqBlockPoolData;
@@ -591,10 +595,10 @@ private:
     };
 
     status_t getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
-                               C2MemoryUsage usage, int32_t* slot, sp<Fence>* fence);
+                               C2MemoryUsage usage, slot_t* slot, sp<Fence>* fence);
 
     // Called when C2GraphicBlock and its C2VdaBqBlockPoolData are released.
-    void onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
+    void onC2GraphicBlockReleased(uint64_t producerId, slot_t slotId, unique_id_t uniqueId,
                                   bool shared);
 
     // Queries the generation and usage flags from the given producer by dequeuing and requesting a
@@ -604,7 +608,7 @@ private:
                                         uint64_t* usage);
 
     // Wait the fence. If any error occurs, cancel the buffer back to the producer.
-    status_t waitFence(int32_t slot, sp<Fence> fence);
+    status_t waitFence(slot_t slot, sp<Fence> fence);
 
     // Detaches all the tracked buffers from |mProducer|, and returns all the buffers.
     std::vector<std::shared_ptr<C2GraphicAllocation>> detachAndMoveTrackedBuffers();
@@ -635,7 +639,7 @@ private:
     BufferFormat mBufferFormat;
 
     // The unique ids of the buffers owned by V4L2DecodeComponent.
-    std::set<uint32_t> mComponentOwnedUniquedIds;
+    std::set<unique_id_t> mComponentOwnedUniquedIds;
 
     // Listener for buffer release events.
     sp<EventNotifier> mFetchBufferNotifier;
@@ -650,7 +654,7 @@ private:
     // Fields for surface switching.
     // The dequeued slots that comes from attaching buffers to the new surface.
     // All the slots |mDequeuedSlots| should be also in |mTrackedGraphicBuffers|.
-    std::vector<int32_t> mDequeuedSlots;
+    std::vector<slot_t> mDequeuedSlots;
     // The allocations needed to be migrated to the new surface.
     std::vector<std::shared_ptr<C2GraphicAllocation>> mAllocationsToBeMigrated;
     // The generation and usage of the new surface.
@@ -711,14 +715,14 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         }
     }
 
-    int32_t slot;
+    slot_t slot;
     sp<Fence> fence = new Fence();
     const auto status = getFreeSlotLocked(width, height, format, usage, &slot, &fence);
     if (status != android::NO_ERROR) {
         return asC2Error(status);
     }
 
-    uint32_t uniqueId;
+    unique_id_t uniqueId;
     sp<GraphicBuffer> slotBuffer;
     std::tie(uniqueId, slotBuffer) = mTrackedGraphicBuffers.getGraphicBuffer(slot);
     ALOGV("%s(): dequeued slot=%d uniqueId=%u", __func__, slot, uniqueId);
@@ -781,14 +785,14 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 }
 
 status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
-                                                   C2MemoryUsage usage, int32_t* slot,
+                                                   C2MemoryUsage usage, slot_t* slot,
                                                    sp<Fence>* fence) {
     // If there is an dequeued slot that is not owned by the component, then return it directly.
     if (!mDequeuedSlots.empty()) {
         ALOGV("%s(): mDequeuedSlots.size()=%zu", __func__, mDequeuedSlots.size());
         // Erasing the last feasible element is faster, so we use reverse iterator here.
         for (auto rIter = mDequeuedSlots.rbegin(); rIter != mDequeuedSlots.rend(); rIter++) {
-            uint32_t uniqueId;
+            unique_id_t uniqueId;
             std::tie(uniqueId, std::ignore) = mTrackedGraphicBuffers.getGraphicBuffer(*rIter);
 
             if (mComponentOwnedUniquedIds.find(uniqueId) == mComponentOwnedUniquedIds.end()) {
@@ -877,7 +881,7 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint
                                                             uint32_t* generation, uint64_t* usage) {
     ALOGV("queryGenerationAndUsage");
     sp<Fence> fence = new Fence();
-    int32_t slot;
+    slot_t slot;
 
     const auto dequeueStatus =
             mProducer->dequeueBuffer(width, height, pixelFormat, androidUsage, &slot, &fence);
@@ -915,7 +919,7 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint
     return C2_OK;
 }
 
-status_t C2VdaBqBlockPool::Impl::waitFence(int32_t slot, sp<Fence> fence) {
+status_t C2VdaBqBlockPool::Impl::waitFence(slot_t slot, sp<Fence> fence) {
     const auto fenceStatus = fence->wait(kFenceWaitTimeMs);
     if (fenceStatus == android::NO_ERROR) {
         return android::NO_ERROR;
@@ -982,7 +986,7 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
 std::vector<std::shared_ptr<C2GraphicAllocation>>
 C2VdaBqBlockPool::Impl::detachAndMoveTrackedBuffers() {
     // Detach all dequeued slots.
-    for (const int32_t slotId : mDequeuedSlots) {
+    for (const auto& slotId : mDequeuedSlots) {
         const auto status = mProducer->detachBuffer(slotId);
         if (status != android::NO_ERROR) {
             ALOGW("detachBuffer slot=%d from old producer failed: %d", slotId, status);
@@ -1120,7 +1124,7 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
         }
 
         // Attach GraphicBuffer to producer.
-        int32_t newSlot;
+        slot_t newSlot;
         const auto attachStatus = mProducer->attachBuffer(graphicBuffer, &newSlot);
         if (attachStatus == android::TIMED_OUT || attachStatus == android::INVALID_OPERATION) {
             ALOGV("%s(): No free slot yet.", __func__);
@@ -1177,8 +1181,8 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
     return true;
 }
 
-void C2VdaBqBlockPool::Impl::onC2GraphicBlockReleased(uint64_t producerId, int32_t slotId,
-                                                      uint32_t uniqueId, bool shared) {
+void C2VdaBqBlockPool::Impl::onC2GraphicBlockReleased(uint64_t producerId, slot_t slotId,
+                                                      unique_id_t uniqueId, bool shared) {
     ALOGV("%s(producerId=%" PRIx64 ", slotId=%d, uniqueId=%u shared=%d)", __func__, producerId,
           slotId, uniqueId, shared);
     std::lock_guard<std::mutex> lock(mMutex);
@@ -1220,7 +1224,7 @@ bool C2VdaBqBlockPool::Impl::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
     return true;
 }
 
-std::optional<uint32_t> C2VdaBqBlockPool::Impl::getBufferIdFromGraphicBlock(
+std::optional<unique_id_t> C2VdaBqBlockPool::Impl::getBufferIdFromGraphicBlock(
         const C2Block2D& block) {
     return mDrmHandleManager.getHandle(block.handle()->data[0]);
 }
@@ -1267,14 +1271,14 @@ bool C2VdaBqBlockPool::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
     return false;
 }
 
-std::optional<uint32_t> C2VdaBqBlockPool::getBufferIdFromGraphicBlock(const C2Block2D& block) {
+std::optional<unique_id_t> C2VdaBqBlockPool::getBufferIdFromGraphicBlock(const C2Block2D& block) {
     if (mImpl) {
         return mImpl->getBufferIdFromGraphicBlock(block);
     }
     return std::nullopt;
 }
 
-C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
+C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, slot_t slotId, unique_id_t uniqueId,
                                            std::weak_ptr<C2VdaBqBlockPool::Impl> pool)
       : mProducerId(producerId), mSlotId(slotId), mUniqueId(uniqueId), mPool(std::move(pool)) {}
 
