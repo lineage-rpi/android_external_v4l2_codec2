@@ -512,8 +512,18 @@ void V4L2DecodeComponent::onDecodeDone(int32_t bitstreamId, VideoDecoder::Decode
           VideoDecoder::DecodeStatusToString(status));
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
+    auto it = mWorksAtDecoder.find(bitstreamId);
+    ALOG_ASSERT(it != mWorksAtDecoder.end());
+    C2Work* work = it->second.get();
+
     switch (status) {
     case VideoDecoder::DecodeStatus::kAborted:
+        work->input.buffers.front().reset();
+        work->worklets.front()->output.flags = static_cast<C2FrameData::flags_t>(
+                work->worklets.front()->output.flags & C2FrameData::FLAG_DROP_FRAME);
+        mOutputBitstreamIds.push(bitstreamId);
+
+        pumpReportWork();
         return;
 
     case VideoDecoder::DecodeStatus::kError:
@@ -521,10 +531,6 @@ void V4L2DecodeComponent::onDecodeDone(int32_t bitstreamId, VideoDecoder::Decode
         return;
 
     case VideoDecoder::DecodeStatus::kOk:
-        auto it = mWorksAtDecoder.find(bitstreamId);
-        ALOG_ASSERT(it != mWorksAtDecoder.end());
-        C2Work* work = it->second.get();
-
         // Release the input buffer.
         work->input.buffers.front().reset();
 
@@ -627,7 +633,10 @@ bool V4L2DecodeComponent::reportWorkIfFinished(int32_t bitstreamId) {
     }
 
     auto it = mWorksAtDecoder.find(bitstreamId);
-    ALOG_ASSERT(it != mWorksAtDecoder.end());
+    if (it == mWorksAtDecoder.end()) {
+        ALOGI("work(bitstreamId = %d) is dropped, skip.", bitstreamId);
+        return true;
+    }
 
     if (!isWorkDone(*(it->second))) {
         ALOGV("work(bitstreamId = %d) is not done yet.", bitstreamId);
