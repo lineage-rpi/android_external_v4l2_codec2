@@ -74,19 +74,19 @@ using ::android::hardware::graphics::bufferqueue::V2_0::utils::b2h;
 using ::android::hardware::graphics::bufferqueue::V2_0::utils::h2b;
 using ::android::hardware::graphics::bufferqueue::V2_0::utils::HFenceWrapper;
 
-static c2_status_t asC2Error(int32_t err) {
+static c2_status_t asC2Error(status_t err) {
     switch (err) {
-    case android::NO_ERROR:
+    case OK:
         return C2_OK;
-    case android::NO_INIT:
+    case NO_INIT:
         return C2_NO_INIT;
-    case android::BAD_VALUE:
+    case BAD_VALUE:
         return C2_BAD_VALUE;
-    case android::TIMED_OUT:
+    case TIMED_OUT:
         return C2_TIMED_OUT;
-    case android::WOULD_BLOCK:
+    case WOULD_BLOCK:
         return C2_BLOCKING;
-    case android::NO_MEMORY:
+    case NO_MEMORY:
         return C2_NO_MEMORY;
     }
     return C2_CORRUPTED;
@@ -117,7 +117,7 @@ public:
             ALOGE("%s(): corrupted transaction.", __func__);
             return FAILED_TRANSACTION;
         }
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -136,7 +136,7 @@ public:
             ALOGE("%s(): corrupted transaction.", __func__);
             return FAILED_TRANSACTION;
         }
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -154,7 +154,7 @@ public:
                 input, [&converted, &status, &slot, &fence](HStatus hStatus, int32_t hSlot,
                                                             Output const& hOutput) {
                     converted = h2b(hStatus, &status);
-                    if (!converted || status != android::NO_ERROR) {
+                    if (!converted || status != OK) {
                         return;
                     }
 
@@ -180,11 +180,10 @@ public:
         // will return INVALID_OPERATION because of an attempt to dequeue too many buffers.
         // The C2VdaBqBlockPool cannot prevent this from happening, so just map it to TIMED_OUT
         // and let the C2VdaBqBlockPool's caller's timeout retry logic handle the failure.
-        if (status == android::INVALID_OPERATION) {
-            status = android::TIMED_OUT;
+        if (status == INVALID_OPERATION) {
+            status = TIMED_OUT;
         }
-        if (status != android::NO_ERROR && status != BUFFER_NEEDS_REALLOCATION &&
-            status != android::TIMED_OUT) {
+        if (status != OK && status != BUFFER_NEEDS_REALLOCATION && status != TIMED_OUT) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -202,7 +201,7 @@ public:
             ALOGE("%s(): corrupted transaction.", __func__);
             return FAILED_TRANSACTION;
         }
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -224,7 +223,7 @@ public:
                                                bool releaseAllBuffers) {
                     converted = h2b(hStatus, &status);
                     *outSlot = static_cast<int>(hSlot);
-                    if (converted && releaseAllBuffers && status == android::NO_ERROR) {
+                    if (converted && releaseAllBuffers && status == OK) {
                         status = RELEASE_ALL_BUFFERS;
                     }
                 });
@@ -237,7 +236,7 @@ public:
             ALOGE("%s(): corrupted transaction.", __func__);
             return FAILED_TRANSACTION;
         }
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -262,7 +261,7 @@ public:
             ALOGE("%s(): corrupted transaction.", __func__);
             return FAILED_TRANSACTION;
         }
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -295,7 +294,7 @@ public:
             ALOGE("%s(): corrupted transaction.", __func__);
             return FAILED_TRANSACTION;
         }
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGD("%s() failed: %d", __func__, status);
         }
         return status;
@@ -310,7 +309,7 @@ public:
         }
 
         *outId = static_cast<uint64_t>(transResult);
-        return android::NO_ERROR;
+        return OK;
     }
 
     // android::IProducerListener cannot be depended by vendor library, so we use HProducerListener
@@ -711,7 +710,7 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
     slot_t slot;
     sp<Fence> fence = new Fence();
     const auto status = getFreeSlotLocked(width, height, format, usage, &slot, &fence);
-    if (status != android::NO_ERROR) {
+    if (status != OK) {
         return asC2Error(status);
     }
 
@@ -727,12 +726,12 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         // free this slot. And try dequeueBuffer again.
         ALOGD("dequeued a new slot %d but already allocated enough buffers. Detach it.", slot);
 
-        if (mProducer->detachBuffer(slot) != android::NO_ERROR) {
+        if (mProducer->detachBuffer(slot) != OK) {
             return C2_CORRUPTED;
         }
 
         const auto allocationStatus = allowAllocation(false);
-        if (allocationStatus != android::NO_ERROR) {
+        if (allocationStatus != OK) {
             return asC2Error(allocationStatus);
         }
         return C2_TIMED_OUT;
@@ -763,7 +762,7 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         // Already allocated enough buffers, set allowAllocation to false to restrict the
         // eligible slots to allocated ones for future dequeue.
         const auto allocationStatus = allowAllocation(false);
-        if (allocationStatus != android::NO_ERROR) {
+        if (allocationStatus != OK) {
             return asC2Error(allocationStatus);
         }
     }
@@ -798,7 +797,7 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
                       *rIter, mDequeuedSlots.size());
                 *slot = *rIter;
                 mDequeuedSlots.erase(std::next(rIter).base());
-                return android::NO_ERROR;
+                return OK;
             }
         }
     }
@@ -806,11 +805,11 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
     // Dequeue a free slot from IGBP.
     ALOGV("%s(): try to dequeue free slot from IGBP.", __func__);
     const auto dequeueStatus = mProducer->dequeueBuffer(width, height, format, usage, slot, fence);
-    if (dequeueStatus == android::TIMED_OUT) {
+    if (dequeueStatus == TIMED_OUT) {
         std::lock_guard<std::mutex> lock(mBufferReleaseMutex);
         mBufferReleasedAfterTimedOut = false;
     }
-    if (dequeueStatus != android::NO_ERROR && dequeueStatus != BUFFER_NEEDS_REALLOCATION) {
+    if (dequeueStatus != OK && dequeueStatus != BUFFER_NEEDS_REALLOCATION) {
         return dequeueStatus;
     }
 
@@ -818,7 +817,7 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
     if (!mTrackedGraphicBuffers.hasSlotId(*slot) || dequeueStatus == BUFFER_NEEDS_REALLOCATION) {
         sp<GraphicBuffer> slotBuffer = new GraphicBuffer();
         const auto requestStatus = mProducer->requestBuffer(*slot, &slotBuffer);
-        if (requestStatus != android::NO_ERROR) {
+        if (requestStatus != OK) {
             mProducer->cancelBuffer(*slot, *fence);
             return requestStatus;
         }
@@ -835,7 +834,7 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
     if (*fence) {
         // TODO(b/178770649): Move the fence waiting to the last point of returning buffer.
         const auto fenceStatus = waitFence(*slot, *fence);
-        if (fenceStatus != android::NO_ERROR) {
+        if (fenceStatus != OK) {
             return fenceStatus;
         }
 
@@ -851,7 +850,7 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
 
     ALOGV("%s(%ux%u): dequeued slot=%d", __func__, mBufferFormat.mWidth, mBufferFormat.mHeight,
           *slot);
-    return android::NO_ERROR;
+    return OK;
 }
 
 void C2VdaBqBlockPool::Impl::onEventNotified() {
@@ -884,7 +883,7 @@ status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsageLocked(uint32_t width, u
     slot_t slot;
     const auto dequeueStatus =
             mProducer->dequeueBuffer(width, height, pixelFormat, androidUsage, &slot, &fence);
-    if (dequeueStatus != android::NO_ERROR && dequeueStatus != BUFFER_NEEDS_REALLOCATION) {
+    if (dequeueStatus != OK && dequeueStatus != BUFFER_NEEDS_REALLOCATION) {
         return dequeueStatus;
     }
 
@@ -895,12 +894,12 @@ status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsageLocked(uint32_t width, u
 
     // Detach and delete the temporary buffer.
     const auto detachStatus = mProducer->detachBuffer(slot);
-    if (detachStatus != android::NO_ERROR) {
+    if (detachStatus != OK) {
         return detachStatus;
     }
 
     // Check requestBuffer return flag.
-    if (requestStatus != android::NO_ERROR) {
+    if (requestStatus != OK) {
         return requestStatus;
     }
 
@@ -908,24 +907,24 @@ status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsageLocked(uint32_t width, u
     *usage = slotBuffer->getUsage();
     *generation = slotBuffer->getGenerationNumber();
     ALOGV("Obtained from temp buffer: generation = %u, usage = %" PRIu64 "", *generation, *usage);
-    return android::NO_ERROR;
+    return OK;
 }
 
 status_t C2VdaBqBlockPool::Impl::waitFence(slot_t slot, sp<Fence> fence) {
     const auto fenceStatus = fence->wait(kFenceWaitTimeMs);
-    if (fenceStatus == android::NO_ERROR) {
-        return android::NO_ERROR;
+    if (fenceStatus == OK) {
+        return OK;
     }
 
     const auto cancelStatus = mProducer->cancelBuffer(slot, fence);
-    if (cancelStatus != android::NO_ERROR) {
+    if (cancelStatus != OK) {
         ALOGE("%s(): failed to cancelBuffer(slot=%d)", __func__, slot);
         return cancelStatus;
     }
 
     if (fenceStatus == -ETIME) {  // fence wait timed out
         ALOGV("%s(): buffer (slot=%d) fence wait timed out", __func__, slot);
-        return android::TIMED_OUT;
+        return TIMED_OUT;
     }
     ALOGE("buffer fence wait error: %d", fenceStatus);
     return fenceStatus;
@@ -956,7 +955,7 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     }
 
     const auto status = allowAllocation(true);
-    if (status != android::NO_ERROR) {
+    if (status != OK) {
         return asC2Error(status);
     }
 
@@ -979,7 +978,7 @@ C2VdaBqBlockPool::Impl::detachAndMoveTrackedBuffers() {
     // Detach all dequeued slots.
     for (const auto& slotId : mDequeuedSlots) {
         const auto status = mProducer->detachBuffer(slotId);
-        if (status != android::NO_ERROR) {
+        if (status != OK) {
             ALOGW("detachBuffer slot=%d from old producer failed: %d", slotId, status);
         }
     }
@@ -1005,7 +1004,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
 
     auto newProducer = std::make_unique<H2BGraphicBufferProducer>(producer);
     uint64_t newProducerId;
-    if (newProducer->getUniqueId(&newProducerId) != android::NO_ERROR) {
+    if (newProducer->getUniqueId(&newProducerId) != OK) {
         ALOGE("%s(): failed to get IGBP ID", __func__);
         mConfigureProducerError = true;
         return;
@@ -1025,17 +1024,17 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     mAllowAllocation = false;
 
     // Set allowAllocation to new producer.
-    if (allowAllocation(true) != android::NO_ERROR) {
+    if (allowAllocation(true) != OK) {
         ALOGE("%s(): failed to allowAllocation(true)", __func__);
         mConfigureProducerError = true;
         return;
     }
-    if (mProducer->setDequeueTimeout(0) != android::NO_ERROR) {
+    if (mProducer->setDequeueTimeout(0) != OK) {
         ALOGE("%s(): failed to setDequeueTimeout(0)", __func__);
         mConfigureProducerError = true;
         return;
     }
-    if (mProducer->setMaxDequeuedBufferCount(kMaxDequeuedBufferCount) != android::NO_ERROR) {
+    if (mProducer->setMaxDequeuedBufferCount(kMaxDequeuedBufferCount) != OK) {
         ALOGE("%s(): failed to setMaxDequeuedBufferCount(%d)", __func__, kMaxDequeuedBufferCount);
         mConfigureProducerError = true;
         return;
@@ -1049,7 +1048,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
 
     // hack(b/146409777): Try to connect ARC-specific listener first.
     sp<BufferReleasedNotifier> listener = new BufferReleasedNotifier(weak_from_this());
-    if (mProducer->connect(listener, 'ARC\0', false) == android::NO_ERROR) {
+    if (mProducer->connect(listener, 'ARC\0', false) == OK) {
         ALOGI("connected to ARC-specific IGBP listener.");
         mFetchBufferNotifier = listener;
     }
@@ -1066,7 +1065,7 @@ bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
     const status_t err = queryGenerationAndUsageLocked(
             mBufferFormat.mWidth, mBufferFormat.mHeight, mBufferFormat.mPixelFormat,
             mBufferFormat.mUsage, &mGenerationToBeMigrated, &mUsageToBeMigrated);
-    if (err != android::NO_ERROR) {
+    if (err != OK) {
         ALOGE("failed to query generation and usage: %d", err);
         return false;
     }
@@ -1091,7 +1090,7 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
                 new GraphicBuffer(nativeHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
                                   1, mUsageToBeMigrated, stride);
         native_handle_delete(nativeHandle);
-        if (graphicBuffer->initCheck() != android::NO_ERROR) {
+        if (graphicBuffer->initCheck() != OK) {
             ALOGE("Failed to create GraphicBuffer: %d", graphicBuffer->initCheck());
             return false;
         }
@@ -1106,13 +1105,13 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
         // Attach GraphicBuffer to producer.
         slot_t newSlot;
         const auto attachStatus = mProducer->attachBuffer(graphicBuffer, &newSlot);
-        if (attachStatus == android::TIMED_OUT || attachStatus == android::INVALID_OPERATION) {
+        if (attachStatus == TIMED_OUT || attachStatus == INVALID_OPERATION) {
             ALOGV("%s(): No free slot yet.", __func__);
             std::lock_guard<std::mutex> lock(mBufferReleaseMutex);
             mBufferReleasedAfterTimedOut = false;
             return true;
         }
-        if (attachStatus != android::NO_ERROR) {
+        if (attachStatus != OK) {
             ALOGE("%s(): Failed to attach buffer to new producer: %d", __func__, attachStatus);
             return false;
         }
@@ -1149,7 +1148,7 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
     // allocate new buffers. Otherwise allocation will be disabled in fetchGraphicBlock after enough
     // buffers have been allocated.
     if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
-        if (allowAllocation(false) != android::NO_ERROR) {
+        if (allowAllocation(false) != OK) {
             ALOGE("allowAllocation(false) failed");
             return false;
         }
@@ -1167,7 +1166,7 @@ void C2VdaBqBlockPool::Impl::onC2GraphicBlockReleased(uint64_t producerId, slot_
 
     if (!shared && mProducer && producerId == mProducerId) {
         sp<Fence> fence = new Fence();
-        if (mProducer->cancelBuffer(slotId, fence) != android::NO_ERROR) {
+        if (mProducer->cancelBuffer(slotId, fence) != OK) {
             ALOGW("%s(): Failed to cancelBuffer()", __func__);
         }
     }
@@ -1210,14 +1209,14 @@ status_t C2VdaBqBlockPool::Impl::allowAllocation(bool allow) {
 
     if (!mProducer) {
         ALOGW("%s() mProducer is not initiailzed", __func__);
-        return android::NO_INIT;
+        return NO_INIT;
     }
     if (mAllowAllocation == allow) {
-        return android::NO_ERROR;
+        return OK;
     }
 
     const auto status = mProducer->allowAllocation(allow);
-    if (status == android::NO_ERROR) {
+    if (status == OK) {
         mAllowAllocation = allow;
     }
     return status;
