@@ -17,10 +17,13 @@
 
 namespace android {
 namespace {
-// The values are defined at
+// These values are defined at
 // <android_root>/frameworks/base/media/java/android/media/MediaCodecInfo.java.
 constexpr int32_t COLOR_FormatYUV420Planar = 19;
 constexpr int32_t BITRATE_MODE_CBR = 2;
+constexpr int32_t AVCProfileBaseline = 0x01;
+constexpr int32_t VP8ProfileMain = 0x01;
+constexpr int32_t VP9Profile0 = 0x01;
 
 // The time interval between two key frames.
 constexpr int32_t kIFrameIntervalSec = 10;
@@ -40,7 +43,11 @@ std::vector<const char*> GetHWVideoEncoderNames(VideoCodecType type) {
     switch (type) {
     case VideoCodecType::H264:
         return {"c2.v4l2.avc.encoder", "c2.vea.avc.encoder"};
-    default:  // unsupported type: VP8, VP9, or unknown
+    case VideoCodecType::VP8:
+        return {"c2.v4l2.vp8.encoder"};  // Only supported on ARCVM
+    case VideoCodecType::VP9:
+        return {"c2.v4l2.vp9.encoder"};  // Only supported on ARCVM
+    default:
         return {};
     }
 }
@@ -52,16 +59,35 @@ std::vector<const char*> GetSWVideoEncoderNames(VideoCodecType type) {
     switch (type) {
     case VideoCodecType::H264:
         return {"c2.android.avc.encoder", "OMX.google.h264.encoder"};
-    default:  // unsupported type: VP8, VP9, or unknown
+    case VideoCodecType::VP8:
+        return {"c2.android.vp8.encoder", "OMX.google.vp8.encoder"};
+    case VideoCodecType::VP9:
+        return {"c2.android.vp9.encoder", "OMX.google.vp9.encoder"};
+    default:
         return {};
+    }
+}
+
+// Helper function to get the profile associated with the specified codec.
+int32_t GetProfile(VideoCodecType type) {
+    switch (type) {
+    case VideoCodecType::H264:
+        return AVCProfileBaseline;
+    case VideoCodecType::VP8:
+        return VP8ProfileMain;
+    case VideoCodecType::VP9:
+        return VP9Profile0;
+    default:
+        return AVCProfileBaseline;
     }
 }
 
 }  // namespace
 
 // static
-std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(
-        std::string input_path, Size visible_size, bool use_sw_encoder) {
+std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(std::string input_path,
+                                                             VideoCodecType type, Size visible_size,
+                                                             bool use_sw_encoder) {
     if (visible_size.width <= 0 || visible_size.height <= 0 || visible_size.width % 2 == 1 ||
         visible_size.height % 2 == 1) {
         ALOGE("Size is not valid: %dx%d", visible_size.width, visible_size.height);
@@ -82,8 +108,6 @@ std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(
     }
 
     AMediaCodec* codec = nullptr;
-    // Only H264 is supported now.
-    VideoCodecType type = VideoCodecType::H264;
     auto encoder_names =
             use_sw_encoder ? GetSWVideoEncoderNames(type) : GetHWVideoEncoderNames(type);
     for (const auto& encoder_name : encoder_names) {
@@ -98,17 +122,19 @@ std::unique_ptr<MediaCodecEncoder> MediaCodecEncoder::Create(
         return nullptr;
     }
 
-    return std::unique_ptr<MediaCodecEncoder>(new MediaCodecEncoder(
-            codec, std::move(input_file), visible_size, buffer_size, file_size / buffer_size));
+    return std::unique_ptr<MediaCodecEncoder>(
+            new MediaCodecEncoder(codec, type, std::move(input_file), visible_size, buffer_size,
+                                  file_size / buffer_size));
 }
 
-MediaCodecEncoder::MediaCodecEncoder(AMediaCodec* codec,
+MediaCodecEncoder::MediaCodecEncoder(AMediaCodec* codec, VideoCodecType type,
                                      std::unique_ptr<CachedInputFileStream> input_file, Size size,
                                      size_t buffer_size, size_t num_total_frames)
       : kVisibleSize(size),
         kBufferSize(buffer_size),
         kNumTotalFrames(num_total_frames),
         codec_(codec),
+        type_(type),
         num_encoded_frames_(num_total_frames),
         input_file_(std::move(input_file)) {}
 
@@ -134,7 +160,8 @@ void MediaCodecEncoder::Rewind() {
 bool MediaCodecEncoder::Configure(int32_t bitrate, int32_t framerate) {
     ALOGV("Configure encoder bitrate=%d, framerate=%d", bitrate, framerate);
     AMediaFormat* format = AMediaFormat_new();
-    AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, "video/avc");
+    AMediaFormat_setString(format, AMEDIAFORMAT_KEY_MIME, GetMimeType(type_));
+    AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_PROFILE, GetProfile(type_));
     AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_COLOR_FORMAT, COLOR_FormatYUV420Planar);
     AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_BITRATE_MODE, BITRATE_MODE_CBR);
     AMediaFormat_setInt32(format, AMEDIAFORMAT_KEY_I_FRAME_INTERVAL, kIFrameIntervalSec);
