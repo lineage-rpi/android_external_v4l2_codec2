@@ -203,7 +203,7 @@ void V4L2Decoder::drain(DecodeCB drainCb) {
 
     switch (mState) {
     case State::Idle:
-        ALOGD("Nothing need to drain, ignore.");
+        ALOGV("Nothing need to drain, ignore.");
         mTaskRunner->PostTask(
                 FROM_HERE, ::base::BindOnce(std::move(drainCb), VideoDecoder::DecodeStatus::kOk));
         return;
@@ -243,7 +243,7 @@ void V4L2Decoder::pumpDecodeRequest() {
             // change. They implicitly send a V4L2_DEC_CMD_STOP and V4L2_DEC_CMD_START
             // to the decoder.
             if (mInputQueue->QueuedBuffersCount() > 0) {
-                ALOGD("Wait for all input buffers dequeued.");
+                ALOGV("Wait for all input buffers dequeued.");
                 return;
             }
 
@@ -302,7 +302,7 @@ void V4L2Decoder::flush() {
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
     if (mState == State::Idle) {
-        ALOGD("Nothing need to flush, ignore.");
+        ALOGV("Nothing need to flush, ignore.");
         return;
     }
     if (mState == State::Error) {
@@ -536,7 +536,7 @@ void V4L2Decoder::tryFetchVideoFrame() {
     }
 
     if (mOutputQueue->FreeBuffersCount() == 0) {
-        ALOGD("No free V4L2 output buffers, ignore.");
+        ALOGV("No free V4L2 output buffers, ignore.");
         return;
     }
 
@@ -664,7 +664,7 @@ media::Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
 
     media::Rect rect(visible_rect->left, visible_rect->top, visible_rect->width,
                      visible_rect->height);
-    ALOGD("visible rectangle is %s", rect.ToString().c_str());
+    ALOGV("visible rectangle is %s", rect.ToString().c_str());
     if (!media::Rect(codedSize).Contains(rect)) {
         ALOGW("visible rectangle %s is not inside coded size %s", rect.ToString().c_str(),
               codedSize.ToString().c_str());
