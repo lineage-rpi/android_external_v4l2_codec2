@@ -33,10 +33,12 @@ std::string getMediaTypeFromComponentName(const std::string& name) {
         name == V4L2ComponentName::kH264Encoder) {
         return MEDIA_MIMETYPE_VIDEO_AVC;
     }
-    if (name == V4L2ComponentName::kVP8Decoder || name == V4L2ComponentName::kVP8SecureDecoder) {
+    if (name == V4L2ComponentName::kVP8Decoder || name == V4L2ComponentName::kVP8SecureDecoder ||
+        name == V4L2ComponentName::kVP8Encoder) {
         return MEDIA_MIMETYPE_VIDEO_VP8;
     }
-    if (name == V4L2ComponentName::kVP9Decoder || name == V4L2ComponentName::kVP9SecureDecoder) {
+    if (name == V4L2ComponentName::kVP9Decoder || name == V4L2ComponentName::kVP9SecureDecoder ||
+        name == V4L2ComponentName::kVP9Encoder) {
         return MEDIA_MIMETYPE_VIDEO_VP9;
     }
     return "";
@@ -137,8 +139,10 @@ std::vector<std::shared_ptr<const C2Component::Traits>> V4L2ComponentStore::list
     ret.push_back(GetTraits(V4L2ComponentName::kH264Encoder));
     ret.push_back(GetTraits(V4L2ComponentName::kH264Decoder));
     ret.push_back(GetTraits(V4L2ComponentName::kH264SecureDecoder));
+    ret.push_back(GetTraits(V4L2ComponentName::kVP8Encoder));
     ret.push_back(GetTraits(V4L2ComponentName::kVP8Decoder));
     ret.push_back(GetTraits(V4L2ComponentName::kVP8SecureDecoder));
+    ret.push_back(GetTraits(V4L2ComponentName::kVP9Encoder));
     ret.push_back(GetTraits(V4L2ComponentName::kVP9Decoder));
     ret.push_back(GetTraits(V4L2ComponentName::kVP9SecureDecoder));
     return ret;
