@@ -282,7 +282,7 @@ std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const med
 
     // (b/157113946): Prevent malicious dynamic resolution change exhausts system memory.
     constexpr int kMaximumSupportedArea = 4096 * 4096;
-    if (size.width() * size.height() > kMaximumSupportedArea) {
+    if (size.GetCheckedArea().ValueOrDefault(INT_MAX) > kMaximumSupportedArea) {
         ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width(),
               size.height());
         reportError(C2_BAD_VALUE);
