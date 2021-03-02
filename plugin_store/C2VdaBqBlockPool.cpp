@@ -36,6 +36,11 @@ namespace {
 // which period is 16ms. We choose 2x period as timeout.
 constexpr int kFenceWaitTimeMs = 32;
 
+// The default maximum dequeued buffer count of IGBP. Currently we don't use
+// this value to restrict the count of allocated buffers, so we choose a huge
+// enough value here.
+constexpr int kMaxDequeuedBufferCount = 32u;
+
 }  // namespace
 
 using namespace std::chrono_literals;
@@ -637,8 +642,6 @@ private:
 
     // Number of buffers requested on requestNewBufferSet() call.
     size_t mBuffersRequested = 0u;
-    // Set to true when we need to call IGBP::setMaxDequeuedBufferCount() at next fetching buffer.
-    bool mPendingBuffersRequested = false;
     // Currently requested buffer formats.
     BufferFormat mBufferFormat;
 
@@ -688,20 +691,6 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
     if (mConfigureProducerError || !mProducer) {
         ALOGE("%s(): error occurred at previous configureProducer()", __func__);
         return C2_CORRUPTED;
-    }
-
-    if (mPendingBuffersRequested) {
-        const auto status = mProducer->setMaxDequeuedBufferCount(mBuffersRequested);
-        if (status == android::BAD_VALUE) {
-            // Note: We might be stuck here forever if the consumer never release enough buffers or
-            // we hit other restriction of IGBP::setMaxDequeuedBufferCount() unexpectedly.
-            ALOGI("Free buffers are not enough, waiting for consumer release buffers.");
-            return C2_TIMED_OUT;
-        } else if (status != android::NO_ERROR) {
-            return asC2Error(status);
-        }
-
-        mPendingBuffersRequested = false;
     }
 
     // prepareMigrateBuffers() set maximum dequeued buffer count to the size of tracked buffers.
@@ -978,7 +967,6 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     mComponentOwnedUniquedIds.clear();
 
     mBuffersRequested = static_cast<size_t>(bufferCount);
-    mPendingBuffersRequested = true;
 
     // Store buffer formats for future usage.
     mBufferFormat = BufferFormat(width, height, format, C2AndroidMemoryUsage(usage));
@@ -1052,6 +1040,11 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
         mConfigureProducerError = true;
         return;
     }
+    if (mProducer->setMaxDequeuedBufferCount(kMaxDequeuedBufferCount) != android::NO_ERROR) {
+        ALOGE("%s(): failed to setMaxDequeuedBufferCount(%d)", __func__, kMaxDequeuedBufferCount);
+        mConfigureProducerError = true;
+        return;
+    }
 
     if (!prepareMigrateBuffers()) {
         ALOGE("%s(): prepareMigrateBuffers() failed", __func__);
@@ -1073,27 +1066,11 @@ bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
         return false;
     }
 
-    // Before calling configureProducer(), the codec2 framework already attached some of the buffers
-    // to the new surface. However, we have to migrate one more time to keep track of the uniqueId
-    // of each buffer.
-    // To guarantee each buffer is only attached at one slot, we set maximum dequeued buffer count
-    // to the size of tracked buffers before we attach all tracked buffers.
-    // Also, while attaching buffers, generation number and usage must be aligned to the producer.
-    // The generation number and usage could be queried by getting a buffer from the new producer.
-    // So we temporarily need one extra slot for querying generation and usage.
-    if (mProducer->setMaxDequeuedBufferCount(mAllocationsToBeMigrated.size() + 1) !=
-        android::NO_ERROR) {
-        return false;
-    }
     const status_t err = queryGenerationAndUsageLocked(
             mBufferFormat.mWidth, mBufferFormat.mHeight, mBufferFormat.mPixelFormat,
             mBufferFormat.mUsage, &mGenerationToBeMigrated, &mUsageToBeMigrated);
     if (err != android::NO_ERROR) {
         ALOGE("failed to query generation and usage: %d", err);
-        return false;
-    }
-    if (mProducer->setMaxDequeuedBufferCount(mAllocationsToBeMigrated.size()) !=
-        android::NO_ERROR) {
         return false;
     }
 
@@ -1169,10 +1146,6 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
 
         mDequeuedSlots.push_back(newSlot);
         mAllocationsToBeMigrated.pop_back();
-    }
-
-    if (mProducer->setMaxDequeuedBufferCount(mBuffersRequested) != android::NO_ERROR) {
-        return false;
     }
 
     // Set allowAllocation to false if we track enough buffers, so that the producer does not
