@@ -28,7 +28,7 @@ cc_library_shared {
     ],
 
     header_libs: [
-        "libcodec2_internal",
+        "libcodec2_internal", // needed for including C2BqBufferPriv.h.
     ],
     shared_libs: [
         "android.hardware.graphics.bufferqueue@2.0",
