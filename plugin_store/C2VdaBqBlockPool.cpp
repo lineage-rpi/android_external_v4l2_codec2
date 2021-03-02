@@ -1004,18 +1004,6 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     }
 
     auto newProducer = std::make_unique<H2BGraphicBufferProducer>(producer);
-    if (newProducer->setDequeueTimeout(0) != android::NO_ERROR) {
-        ALOGE("%s(): failed to setDequeueTimeout(0)", __func__);
-        mConfigureProducerError = true;
-        return;
-    }
-    // hack(b/146409777): Try to connect ARC-specific listener first.
-    sp<BufferReleasedNotifier> listener = new BufferReleasedNotifier(weak_from_this());
-    if (newProducer->connect(listener, 'ARC\0', false) == android::NO_ERROR) {
-        ALOGI("connected to ARC-specific IGBP listener.");
-        mFetchBufferNotifier = listener;
-    }
-
     uint64_t newProducerId;
     if (newProducer->getUniqueId(&newProducerId) != android::NO_ERROR) {
         ALOGE("%s(): failed to get IGBP ID", __func__);
@@ -1033,10 +1021,17 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
 
     mProducer = std::move(newProducer);
     mProducerId = newProducerId;
+    mConfigureProducerError = false;
     mAllowAllocation = false;
 
     // Set allowAllocation to new producer.
     if (allowAllocation(true) != android::NO_ERROR) {
+        ALOGE("%s(): failed to allowAllocation(true)", __func__);
+        mConfigureProducerError = true;
+        return;
+    }
+    if (mProducer->setDequeueTimeout(0) != android::NO_ERROR) {
+        ALOGE("%s(): failed to setDequeueTimeout(0)", __func__);
         mConfigureProducerError = true;
         return;
     }
@@ -1049,6 +1044,14 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     if (!prepareMigrateBuffers()) {
         ALOGE("%s(): prepareMigrateBuffers() failed", __func__);
         mConfigureProducerError = true;
+        return;
+    }
+
+    // hack(b/146409777): Try to connect ARC-specific listener first.
+    sp<BufferReleasedNotifier> listener = new BufferReleasedNotifier(weak_from_this());
+    if (mProducer->connect(listener, 'ARC\0', false) == android::NO_ERROR) {
+        ALOGI("connected to ARC-specific IGBP listener.");
+        mFetchBufferNotifier = listener;
     }
 }
 
