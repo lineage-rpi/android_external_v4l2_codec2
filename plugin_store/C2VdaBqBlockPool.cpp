@@ -344,7 +344,7 @@ public:
         virtual void onEventNotified() = 0;
     };
 
-    explicit EventNotifier(const std::shared_ptr<Listener>& listener) : mListener(listener) {}
+    explicit EventNotifier(std::weak_ptr<Listener> listener) : mListener(std::move(listener)) {}
     virtual ~EventNotifier() = default;
 
 protected:
@@ -393,7 +393,7 @@ struct C2VdaBqBlockPoolData : public _C2BlockPoolData {
     static constexpr int kTypeVdaBufferQueue = TYPE_BUFFERQUEUE + 256;
 
     C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
-                         const std::shared_ptr<C2VdaBqBlockPool::Impl>& pool);
+                         std::weak_ptr<C2VdaBqBlockPool::Impl> pool);
     C2VdaBqBlockPoolData() = delete;
 
     // If |mShared| is false, call detach buffer to BufferQueue via |mPool|
@@ -405,7 +405,7 @@ struct C2VdaBqBlockPoolData : public _C2BlockPoolData {
     const uint64_t mProducerId;
     const int32_t mSlotId;
     const uint32_t mUniqueId;
-    const std::shared_ptr<C2VdaBqBlockPool::Impl> mPool;
+    const std::weak_ptr<C2VdaBqBlockPool::Impl> mPool;
 };
 
 c2_status_t MarkBlockPoolDataAsShared(const C2ConstGraphicBlock& sharedBlock) {
@@ -761,7 +761,7 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
     std::shared_ptr<C2GraphicAllocation> allocation = mTrackedGraphicBuffers.getAllocation(slot);
     const uint32_t uniqueId = mTrackedGraphicBuffers.getUniqueId(slot);
     auto poolData =
-            std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, uniqueId, shared_from_this());
+            std::make_shared<C2VdaBqBlockPoolData>(mProducerId, slot, uniqueId, weak_from_this());
     *block = _C2BlockFactory::CreateGraphicBlock(std::move(allocation), std::move(poolData));
     if (*block == nullptr) {
         ALOGE("failed to create GraphicBlock: no memory");
@@ -997,7 +997,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
         return;
     }
     // hack(b/146409777): Try to connect ARC-specific listener first.
-    sp<BufferReleasedNotifier> listener = new BufferReleasedNotifier(shared_from_this());
+    sp<BufferReleasedNotifier> listener = new BufferReleasedNotifier(weak_from_this());
     if (newProducer->connect(listener, 'ARC\0', false) == android::NO_ERROR) {
         ALOGI("connected to ARC-specific IGBP listener.");
         mFetchBufferNotifier = listener;
@@ -1235,15 +1235,14 @@ bool C2VdaBqBlockPool::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
 }
 
 C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,
-                                           const std::shared_ptr<C2VdaBqBlockPool::Impl>& pool)
-      : mProducerId(producerId), mSlotId(slotId), mUniqueId(uniqueId), mPool(pool) {}
+                                           std::weak_ptr<C2VdaBqBlockPool::Impl> pool)
+      : mProducerId(producerId), mSlotId(slotId), mUniqueId(uniqueId), mPool(std::move(pool)) {}
 
 C2VdaBqBlockPoolData::~C2VdaBqBlockPoolData() {
-    if (!mPool) {
-        return;
+    std::shared_ptr<C2VdaBqBlockPool::Impl> pool = mPool.lock();
+    if (pool) {
+        pool->onC2GraphicBlockReleased(mProducerId, mSlotId, mUniqueId, mShared);
     }
-
-    mPool->onC2GraphicBlockReleased(mProducerId, mSlotId, mUniqueId, mShared);
 }
 
 }  // namespace android
