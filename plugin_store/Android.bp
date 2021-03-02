@@ -18,7 +18,7 @@ cc_library_shared {
     srcs: [
         "C2VdaBqBlockPool.cpp",
         "C2VdaPooledBlockPool.cpp",
-        "V4L2GraphicAllocator.cpp",
+        "DrmGrallocHelpers.cpp",
         "V4L2PluginStore.cpp",
         "VendorAllocatorLoader.cpp",
     ],
@@ -33,6 +33,7 @@ cc_library_shared {
         "android.hardware.graphics.bufferqueue@2.0",
         "libchrome",
         "libcutils",
+        "libdrm",
         "libhardware",
         "libhidlbase",
         "libnativewindow",

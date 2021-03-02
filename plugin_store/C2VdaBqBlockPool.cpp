@@ -8,6 +8,7 @@
 #include <v4l2_codec2/plugin_store/C2VdaBqBlockPool.h>
 
 #include <errno.h>
+#include <string.h>
 
 #include <chrono>
 #include <mutex>
@@ -15,6 +16,7 @@
 #include <sstream>
 #include <thread>
 
+#include <C2AllocatorGralloc.h>
 #include <C2BlockInternal.h>
 #include <android/hardware/graphics/bufferqueue/2.0/IGraphicBufferProducer.h>
 #include <android/hardware/graphics/bufferqueue/2.0/IProducerListener.h>
@@ -24,8 +26,8 @@
 #include <types.h>
 #include <ui/BufferQueueDefs.h>
 
+#include <v4l2_codec2/plugin_store/DrmGrallocHelpers.h>
 #include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
-#include <v4l2_codec2/plugin_store/V4L2GraphicAllocator.h>
 
 namespace android {
 namespace {
@@ -521,6 +523,47 @@ private:
     std::map<int32_t, std::shared_ptr<C2GraphicAllocation>> mSlotId2Allocation;
 };
 
+class DrmHandleManager {
+public:
+    DrmHandleManager() { mRenderFd = openRenderFd(); }
+
+    ~DrmHandleManager() {
+        closeAllHandles();
+        if (mRenderFd) {
+            close(*mRenderFd);
+        }
+    }
+
+    std::optional<uint32_t> getHandle(int primeFd) {
+        if (!mRenderFd) {
+            return std::nullopt;
+        }
+
+        std::optional<uint32_t> handle = getDrmHandle(*mRenderFd, primeFd);
+        // Defer closing the handle until we don't need the buffer to keep the returned DRM handle
+        // the same.
+        if (handle) {
+            mHandles.insert(*handle);
+        }
+        return handle;
+    }
+
+    void closeAllHandles() {
+        if (!mRenderFd) {
+            return;
+        }
+
+        for (const uint32_t& handle : mHandles) {
+            closeDrmHandle(*mRenderFd, handle);
+        }
+        mHandles.clear();
+    }
+
+private:
+    std::optional<int> mRenderFd;
+    std::set<uint32_t> mHandles;
+};
+
 class C2VdaBqBlockPool::Impl : public std::enable_shared_from_this<C2VdaBqBlockPool::Impl>,
                                public EventNotifier::Listener {
 public:
@@ -541,6 +584,7 @@ public:
     c2_status_t requestNewBufferSet(int32_t bufferCount, uint32_t width, uint32_t height,
                                     uint32_t format, C2MemoryUsage usage);
     bool setNotifyBlockAvailableCb(::base::OnceClosure cb);
+    std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
 
 private:
     friend struct C2VdaBqBlockPoolData;
@@ -591,6 +635,9 @@ private:
     std::mutex mMutex;
 
     TrackedGraphicBuffers mTrackedGraphicBuffers;
+
+    // We treat DRM handle as uniqueId of GraphicBuffer.
+    DrmHandleManager mDrmHandleManager;
 
     // Number of buffers requested on requestNewBufferSet() call.
     size_t mBuffersRequested = 0u;
@@ -708,28 +755,27 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
 
         // Convert GraphicBuffer to C2GraphicAllocation and wrap producer id and slot index
         ALOGV("buffer wraps { producer id: %" PRIx64 ", slot: %d }", mProducerId, slot);
-        C2Handle* handleWithId = V4L2GraphicAllocator::WrapNativeHandleToC2HandleWithId(
+        C2Handle* grallocHandle = android::WrapNativeCodec2GrallocHandle(
                 slotBuffer->handle, slotBuffer->width, slotBuffer->height, slotBuffer->format,
                 slotBuffer->usage, slotBuffer->stride, slotBuffer->getGenerationNumber(),
                 mProducerId, slot);
-        if (!handleWithId) {
+        if (!grallocHandle) {
             ALOGE("WrapNativeHandleToC2HandleWithId failed");
             return C2_NO_MEMORY;
         }
 
-        std::optional<uint32_t> uniqueId =
-                V4L2GraphicAllocator::getIdFromC2HandleWithId(handleWithId);
-        ALOG_ASSERT(uniqueId, "Failed to get uniqueId from handleWithId");
-        ALOGV("%s(): buffer %u wraps { producerId: %" PRIx64 ", slot: %d }", __func__, *uniqueId,
-              mProducerId, slot);
-
         std::shared_ptr<C2GraphicAllocation> alloc;
-        c2_status_t err = mAllocator->priorGraphicAllocation(handleWithId, &alloc);
+        c2_status_t err = mAllocator->priorGraphicAllocation(grallocHandle, &alloc);
         if (err != C2_OK) {
             ALOGE("priorGraphicAllocation failed: %d", err);
             return err;
         }
 
+        const auto uniqueId = mDrmHandleManager.getHandle(slotBuffer->handle->data[0]);
+        if (!uniqueId.has_value()) {
+            ALOGE("%s(): failed to get DRM handle", __func__);
+            return C2_CORRUPTED;
+        }
         mTrackedGraphicBuffers.insert(slot, *uniqueId, std::move(alloc));
         ALOGV("%s(): mTrackedGraphicBuffers.size=%zu", __func__, mTrackedGraphicBuffers.size());
         if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
@@ -753,6 +799,9 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         ALOGE("failed to create GraphicBlock: no memory");
         return C2_NO_MEMORY;
     }
+
+    ALOGV("%s(): return buffer uniqueId=%u", __func__, uniqueId);
+    ALOG_ASSERT(mComponentOwnedUniquedIds.find(uniqueId) == mComponentOwnedUniquedIds.end());
     mComponentOwnedUniquedIds.insert(uniqueId);
     return C2_OK;
 }
@@ -935,6 +984,8 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     // Release all remained slot buffer references here. CCodec should either cancel or queue its
     // owned buffers from this set before the next resolution change.
     detachAndMoveTrackedBuffers();
+    mDrmHandleManager.closeAllHandles();
+    mComponentOwnedUniquedIds.clear();
 
     mBuffersRequested = static_cast<size_t>(bufferCount);
     mPendingBuffersRequested = true;
@@ -979,6 +1030,7 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
         mProducer = nullptr;
         mProducerId = 0;
         detachAndMoveTrackedBuffers();
+        mDrmHandleManager.closeAllHandles();
         return;
     }
 
@@ -1068,15 +1120,15 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
     ALOGV("%s(): mAllocationsToBeMigrated.size()=%zu", __func__, mAllocationsToBeMigrated.size());
 
     while (!mAllocationsToBeMigrated.empty()) {
-        const C2Handle* oldHandleWithId = mAllocationsToBeMigrated.back()->handle();
+        const C2Handle* oldGrallocHandle = mAllocationsToBeMigrated.back()->handle();
 
         // Convert C2GraphicAllocation to GraphicBuffer, and update generation number and usage.
-        uint32_t uniqueId, width, height, format, stride, igbpSlot, generation;
+        uint32_t width, height, format, stride, igbpSlot, generation;
         uint64_t usage, igbpId;
-        native_handle_t* nativeHandle =
-                V4L2GraphicAllocator::UnwrapAndMoveC2HandleWithId2NativeHandle(
-                        oldHandleWithId, &uniqueId, &width, &height, &format, &usage, &stride,
-                        &generation, &igbpId, &igbpSlot);
+        android::_UnwrapNativeCodec2GrallocMetadata(oldGrallocHandle, &width, &height, &format,
+                                                    &usage, &stride, &generation, &igbpId,
+                                                    &igbpSlot);
+        native_handle_t* nativeHandle = android::UnwrapNativeCodec2GrallocHandle(oldGrallocHandle);
         sp<GraphicBuffer> graphicBuffer =
                 new GraphicBuffer(nativeHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
                                   1, mUsageToBeMigrated, stride);
@@ -1102,8 +1154,11 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
 
         // Migrate C2GraphicAllocation wrapping new usage, generation number, producer id, and
         // slot index, and store it to |newSlotAllocations|.
-        C2Handle* migratedHandle = V4L2GraphicAllocator::MigrateC2HandleWithId(
-                oldHandleWithId, mUsageToBeMigrated, mGenerationToBeMigrated, mProducerId, newSlot);
+        nativeHandle = android::UnwrapNativeCodec2GrallocHandle(oldGrallocHandle);
+        C2Handle* migratedHandle = android::WrapNativeCodec2GrallocHandle(
+                nativeHandle, width, height, format, mUsageToBeMigrated, stride,
+                mGenerationToBeMigrated, mProducerId, newSlot);
+        native_handle_delete(nativeHandle);
         if (!migratedHandle) {
             ALOGE("MigrateC2HandleWithId() failed");
             return false;
@@ -1116,9 +1171,14 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
             return false;
         }
 
-        mTrackedGraphicBuffers.insert(newSlot, uniqueId, std::move(migratedAllocation));
+        const auto uniqueId = mDrmHandleManager.getHandle(graphicBuffer->handle->data[0]);
+        if (!uniqueId.has_value()) {
+            ALOGE("%s(): failed to get DRM handle", __func__);
+            return false;
+        }
+        mTrackedGraphicBuffers.insert(newSlot, *uniqueId, std::move(migratedAllocation));
         ALOGV("%s(): Migrated buffer %u to slot %d, mTrackedGraphicBuffers.size=%zu", __func__,
-              uniqueId, newSlot, mTrackedGraphicBuffers.size());
+              *uniqueId, newSlot, mTrackedGraphicBuffers.size());
 
         mDequeuedSlots.push_back(newSlot);
         mAllocationsToBeMigrated.pop_back();
@@ -1183,6 +1243,11 @@ bool C2VdaBqBlockPool::Impl::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
     return true;
 }
 
+std::optional<uint32_t> C2VdaBqBlockPool::Impl::getBufferIdFromGraphicBlock(
+        const C2Block2D& block) {
+    return mDrmHandleManager.getHandle(block.handle()->data[0]);
+}
+
 C2VdaBqBlockPool::C2VdaBqBlockPool(const std::shared_ptr<C2Allocator>& allocator,
                                    const local_id_t localId)
       : C2BufferQueueBlockPool(allocator, localId), mLocalId(localId), mImpl(new Impl(allocator)) {}
@@ -1223,6 +1288,13 @@ bool C2VdaBqBlockPool::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
         return mImpl->setNotifyBlockAvailableCb(std::move(cb));
     }
     return false;
+}
+
+std::optional<uint32_t> C2VdaBqBlockPool::getBufferIdFromGraphicBlock(const C2Block2D& block) {
+    if (mImpl) {
+        return mImpl->getBufferIdFromGraphicBlock(block);
+    }
+    return std::nullopt;
 }
 
 C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint64_t producerId, int32_t slotId, uint32_t uniqueId,

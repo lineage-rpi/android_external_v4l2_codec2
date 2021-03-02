@@ -65,6 +65,9 @@ private:
                                            const media::Size& size, uint32_t format,
                                            C2MemoryUsage usage);
 
+    static std::optional<uint32_t> getBufferIdFromGraphicBlock(C2BlockPool& blockPool,
+                                                               const C2Block2D& block);
+
     // Ask |blockPool| to notify when a block is available via |cb|.
     // Return true if |blockPool| supports notifying buffer available.
     static bool setNotifyBlockAvailableCb(C2BlockPool& blockPool, ::base::OnceClosure cb);

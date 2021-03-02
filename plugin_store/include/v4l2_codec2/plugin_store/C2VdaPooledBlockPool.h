@@ -22,6 +22,10 @@ public:
     using C2PooledBlockPool::C2PooledBlockPool;
     ~C2VdaPooledBlockPool() override = default;
 
+    // Extracts the buffer ID from BufferPoolData of the graphic block.
+    // |block| is the graphic block allocated by bufferpool block pool.
+    static std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
+
     // Allocate the specified number of buffers.
     // |bufferCount| is the number of requested buffers.
     c2_status_t requestNewBufferSet(int32_t bufferCount);
