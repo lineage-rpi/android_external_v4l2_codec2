@@ -603,9 +603,9 @@ private:
 
     // Queries the generation and usage flags from the given producer by dequeuing and requesting a
     // buffer (the buffer is then detached and freed).
-    c2_status_t queryGenerationAndUsage(uint32_t width, uint32_t height, uint32_t pixelFormat,
-                                        C2AndroidMemoryUsage androidUsage, uint32_t* generation,
-                                        uint64_t* usage);
+    status_t queryGenerationAndUsageLocked(uint32_t width, uint32_t height, uint32_t pixelFormat,
+                                           C2AndroidMemoryUsage androidUsage, uint32_t* generation,
+                                           uint64_t* usage);
 
     // Wait the fence. If any error occurs, cancel the buffer back to the producer.
     status_t waitFence(slot_t slot, sp<Fence> fence);
@@ -884,26 +884,19 @@ void C2VdaBqBlockPool::Impl::onEventNotified() {
     }
 }
 
-c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint32_t height,
-                                                            uint32_t pixelFormat,
-                                                            C2AndroidMemoryUsage androidUsage,
-                                                            uint32_t* generation, uint64_t* usage) {
-    ALOGV("queryGenerationAndUsage");
+status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsageLocked(uint32_t width, uint32_t height,
+                                                               uint32_t pixelFormat,
+                                                               C2AndroidMemoryUsage androidUsage,
+                                                               uint32_t* generation,
+                                                               uint64_t* usage) {
+    ALOGV("%s()", __func__);
+
     sp<Fence> fence = new Fence();
     slot_t slot;
-
     const auto dequeueStatus =
             mProducer->dequeueBuffer(width, height, pixelFormat, androidUsage, &slot, &fence);
     if (dequeueStatus != android::NO_ERROR && dequeueStatus != BUFFER_NEEDS_REALLOCATION) {
-        return asC2Error(dequeueStatus);
-    }
-
-    // Wait for acquire fence if we get one.
-    if (fence) {
-        const auto fenceStatus = waitFence(slot, fence);
-        if (fenceStatus != android::NO_ERROR) {
-            return asC2Error(fenceStatus);
-        }
+        return dequeueStatus;
     }
 
     // Call requestBuffer to allocate buffer for the slot and obtain the reference.
@@ -912,20 +905,21 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint
     const auto requestStatus = mProducer->requestBuffer(slot, &slotBuffer);
 
     // Detach and delete the temporary buffer.
-    if (mProducer->detachBuffer(slot) != android::NO_ERROR) {
-        return C2_CORRUPTED;
+    const auto detachStatus = mProducer->detachBuffer(slot);
+    if (detachStatus != android::NO_ERROR) {
+        return detachStatus;
     }
 
     // Check requestBuffer return flag.
     if (requestStatus != android::NO_ERROR) {
-        return asC2Error(requestStatus);
+        return requestStatus;
     }
 
     // Get generation number and usage from the slot buffer.
     *usage = slotBuffer->getUsage();
     *generation = slotBuffer->getGenerationNumber();
     ALOGV("Obtained from temp buffer: generation = %u, usage = %" PRIu64 "", *generation, *usage);
-    return C2_OK;
+    return android::NO_ERROR;
 }
 
 status_t C2VdaBqBlockPool::Impl::waitFence(slot_t slot, sp<Fence> fence) {
@@ -1091,11 +1085,11 @@ bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
         android::NO_ERROR) {
         return false;
     }
-    c2_status_t err = queryGenerationAndUsage(mBufferFormat.mWidth, mBufferFormat.mHeight,
-                                              mBufferFormat.mPixelFormat, mBufferFormat.mUsage,
-                                              &mGenerationToBeMigrated, &mUsageToBeMigrated);
-    if (err != C2_OK) {
-        ALOGE("queryGenerationAndUsage failed: %d", err);
+    const status_t err = queryGenerationAndUsageLocked(
+            mBufferFormat.mWidth, mBufferFormat.mHeight, mBufferFormat.mPixelFormat,
+            mBufferFormat.mUsage, &mGenerationToBeMigrated, &mUsageToBeMigrated);
+    if (err != android::NO_ERROR) {
+        ALOGE("failed to query generation and usage: %d", err);
         return false;
     }
     if (mProducer->setMaxDequeuedBufferCount(mAllocationsToBeMigrated.size()) !=
