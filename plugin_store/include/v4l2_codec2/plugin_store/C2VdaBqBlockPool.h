@@ -98,6 +98,8 @@ public:
      */
     bool setNotifyBlockAvailableCb(base::OnceClosure cb);
 
+    std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
+
 private:
     friend struct C2VdaBqBlockPoolData;
     class Impl;
