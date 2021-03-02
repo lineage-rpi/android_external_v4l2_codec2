@@ -566,8 +566,7 @@ private:
 
     // Queries the generation and usage flags from the given producer by dequeuing and requesting a
     // buffer (the buffer is then detached and freed).
-    c2_status_t queryGenerationAndUsage(H2BGraphicBufferProducer* const producer, uint32_t width,
-                                        uint32_t height, uint32_t pixelFormat,
+    c2_status_t queryGenerationAndUsage(uint32_t width, uint32_t height, uint32_t pixelFormat,
                                         C2AndroidMemoryUsage androidUsage, uint32_t* generation,
                                         uint64_t* usage);
 
@@ -859,16 +858,16 @@ void C2VdaBqBlockPool::Impl::onEventNotified() {
     }
 }
 
-c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(
-        H2BGraphicBufferProducer* const producer, uint32_t width, uint32_t height,
-        uint32_t pixelFormat, C2AndroidMemoryUsage androidUsage, uint32_t* generation,
-        uint64_t* usage) {
+c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(uint32_t width, uint32_t height,
+                                                            uint32_t pixelFormat,
+                                                            C2AndroidMemoryUsage androidUsage,
+                                                            uint32_t* generation, uint64_t* usage) {
     ALOGV("queryGenerationAndUsage");
     sp<Fence> fence = new Fence();
     int32_t status;
     int32_t slot;
 
-    status = producer->dequeueBuffer(width, height, pixelFormat, androidUsage, &slot, &fence);
+    status = mProducer->dequeueBuffer(width, height, pixelFormat, androidUsage, &slot, &fence);
     if (status != android::NO_ERROR && status != BUFFER_NEEDS_REALLOCATION) {
         return asC2Error(status);
     }
@@ -877,7 +876,7 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(
     if (fence) {
         status_t fenceStatus = fence->wait(kFenceWaitTimeMs);
         if (fenceStatus != android::NO_ERROR) {
-            if (producer->cancelBuffer(slot, fence) != android::NO_ERROR) {
+            if (mProducer->cancelBuffer(slot, fence) != android::NO_ERROR) {
                 return C2_CORRUPTED;
             }
             if (fenceStatus == -ETIME) {  // fence wait timed out
@@ -892,10 +891,10 @@ c2_status_t C2VdaBqBlockPool::Impl::queryGenerationAndUsage(
     // Call requestBuffer to allocate buffer for the slot and obtain the reference.
     // Get generation number here.
     sp<GraphicBuffer> slotBuffer = new GraphicBuffer();
-    status = producer->requestBuffer(slot, &slotBuffer);
+    status = mProducer->requestBuffer(slot, &slotBuffer);
 
     // Detach and delete the temporary buffer.
-    if (producer->detachBuffer(slot) != android::NO_ERROR) {
+    if (mProducer->detachBuffer(slot) != android::NO_ERROR) {
         return C2_CORRUPTED;
     }
 
@@ -1057,10 +1056,9 @@ bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
         android::NO_ERROR) {
         return false;
     }
-    c2_status_t err =
-            queryGenerationAndUsage(mProducer.get(), mBufferFormat.mWidth, mBufferFormat.mHeight,
-                                    mBufferFormat.mPixelFormat, mBufferFormat.mUsage,
-                                    &mGenerationToBeMigrated, &mUsageToBeMigrated);
+    c2_status_t err = queryGenerationAndUsage(mBufferFormat.mWidth, mBufferFormat.mHeight,
+                                              mBufferFormat.mPixelFormat, mBufferFormat.mUsage,
+                                              &mGenerationToBeMigrated, &mUsageToBeMigrated);
     if (err != C2_OK) {
         ALOGE("queryGenerationAndUsage failed: %d", err);
         return false;
