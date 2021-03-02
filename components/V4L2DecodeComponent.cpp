@@ -446,16 +446,21 @@ void V4L2DecodeComponent::pumpPendingWorks() {
     }
 
     while (!mPendingWorks.empty() && !mIsDraining) {
-        std::unique_ptr<C2Work> work(std::move(mPendingWorks.front()));
+        std::unique_ptr<C2Work> pendingWork(std::move(mPendingWorks.front()));
         mPendingWorks.pop();
 
-        const int32_t bitstreamId = frameIndexToBitstreamId(work->input.ordinal.frameIndex);
-        const bool isCSDWork = work->input.flags & C2FrameData::FLAG_CODEC_CONFIG;
-        const bool isEmptyWork = work->input.buffers.front() == nullptr;
+        const int32_t bitstreamId = frameIndexToBitstreamId(pendingWork->input.ordinal.frameIndex);
+        const bool isCSDWork = pendingWork->input.flags & C2FrameData::FLAG_CODEC_CONFIG;
+        const bool isEmptyWork = pendingWork->input.buffers.front() == nullptr;
+        const bool isEOSWork = pendingWork->input.flags & C2FrameData::FLAG_END_OF_STREAM;
+        const C2Work* work = pendingWork.get();
         ALOGV("Process C2Work bitstreamId=%d isCSDWork=%d, isEmptyWork=%d", bitstreamId, isCSDWork,
               isEmptyWork);
 
-        if (work->input.buffers.front() != nullptr) {
+        auto res = mWorksAtDecoder.insert(std::make_pair(bitstreamId, std::move(pendingWork)));
+        ALOGW_IF(!res.second, "We already inserted bitstreamId %d to decoder?", bitstreamId);
+
+        if (!isEmptyWork) {
             // If input.buffers is not empty, the buffer should have meaningful content inside.
             C2ConstLinearBlock linearBlock =
                     work->input.buffers.front()->data().linearBlocks().front();
@@ -492,13 +497,10 @@ void V4L2DecodeComponent::pumpPendingWorks() {
                                                                  mWeakThis, bitstreamId));
         }
 
-        if (work->input.flags & C2FrameData::FLAG_END_OF_STREAM) {
+        if (isEOSWork) {
             mDecoder->drain(::base::BindOnce(&V4L2DecodeComponent::onDrainDone, mWeakThis));
             mIsDraining = true;
         }
-
-        auto res = mWorksAtDecoder.insert(std::make_pair(bitstreamId, std::move(work)));
-        ALOGW_IF(!res.second, "We already inserted bitstreamId %d to decoder?", bitstreamId);
 
         // Directly report the empty CSD work as finished.
         if (isCSDWork && isEmptyWork) reportWorkIfFinished(bitstreamId);
