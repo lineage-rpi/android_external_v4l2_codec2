@@ -1060,12 +1060,6 @@ bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
         return true;
     }
 
-    if (mAllocator->getId() == android::V4L2AllocatorId::SECURE_GRAPHIC) {
-        // TODO(johnylin): support this when we meet the use case in the future.
-        ALOGE("Switch producer for secure buffer is not supported...");
-        return false;
-    }
-
     const status_t err = queryGenerationAndUsageLocked(
             mBufferFormat.mWidth, mBufferFormat.mHeight, mBufferFormat.mPixelFormat,
             mBufferFormat.mUsage, &mGenerationToBeMigrated, &mUsageToBeMigrated);
