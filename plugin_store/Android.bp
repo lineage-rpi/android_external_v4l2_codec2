@@ -19,6 +19,7 @@ cc_library_shared {
         "C2VdaBqBlockPool.cpp",
         "C2VdaPooledBlockPool.cpp",
         "DrmGrallocHelpers.cpp",
+        "H2BGraphicBufferProducer.cpp",
         "V4L2PluginStore.cpp",
         "VendorAllocatorLoader.cpp",
     ],
