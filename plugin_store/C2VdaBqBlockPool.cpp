@@ -610,6 +610,9 @@ private:
     // Wait the fence. If any error occurs, cancel the buffer back to the producer.
     status_t waitFence(slot_t slot, sp<Fence> fence);
 
+    // Call mProducer's allowAllocation if needed.
+    status_t allowAllocation(bool allow);
+
     // Detaches all the tracked buffers from |mProducer|, and returns all the buffers.
     std::vector<std::shared_ptr<C2GraphicAllocation>> detachAndMoveTrackedBuffers();
     // Switches producer and transfers allocated buffers from old producer to the new one.
@@ -620,6 +623,7 @@ private:
 
     std::unique_ptr<H2BGraphicBufferProducer> mProducer;
     uint64_t mProducerId = 0;
+    bool mAllowAllocation = false;
     C2BufferQueueBlockPool::OnRenderCallback mRenderCallback;
 
     // Function mutex to lock at the start of each API function call for protecting the
@@ -737,6 +741,11 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         if (mProducer->detachBuffer(slot) != android::NO_ERROR) {
             return C2_CORRUPTED;
         }
+
+        const auto allocationStatus = allowAllocation(false);
+        if (allocationStatus != android::NO_ERROR) {
+            return asC2Error(allocationStatus);
+        }
         return C2_TIMED_OUT;
     }
 
@@ -764,7 +773,7 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         ALOGV("Tracked IGBP slots: %s", mTrackedGraphicBuffers.debugString().c_str());
         // Already allocated enough buffers, set allowAllocation to false to restrict the
         // eligible slots to allocated ones for future dequeue.
-        const auto allocationStatus = mProducer->allowAllocation(false);
+        const auto allocationStatus = allowAllocation(false);
         if (allocationStatus != android::NO_ERROR) {
             return asC2Error(allocationStatus);
         }
@@ -963,7 +972,7 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
         return C2_NO_INIT;
     }
 
-    const auto status = mProducer->allowAllocation(true);
+    const auto status = allowAllocation(true);
     if (status != android::NO_ERROR) {
         return asC2Error(status);
     }
@@ -1042,6 +1051,14 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
 
     mProducer = std::move(newProducer);
     mProducerId = newProducerId;
+    mAllowAllocation = false;
+
+    // Set allowAllocation to new producer.
+    if (allowAllocation(true) != android::NO_ERROR) {
+        mConfigureProducerError = true;
+        return;
+    }
+
     if (!prepareMigrateBuffers()) {
         ALOGE("%s(): prepareMigrateBuffers() failed", __func__);
         mConfigureProducerError = true;
@@ -1059,11 +1076,6 @@ bool C2VdaBqBlockPool::Impl::prepareMigrateBuffers() {
     if (mAllocator->getId() == android::V4L2AllocatorId::SECURE_GRAPHIC) {
         // TODO(johnylin): support this when we meet the use case in the future.
         ALOGE("Switch producer for secure buffer is not supported...");
-        return false;
-    }
-
-    // Set allowAllocation to new producer.
-    if (mProducer->allowAllocation(true) != android::NO_ERROR) {
         return false;
     }
 
@@ -1173,7 +1185,7 @@ bool C2VdaBqBlockPool::Impl::pumpMigrateBuffers() {
     // allocate new buffers. Otherwise allocation will be disabled in fetchGraphicBlock after enough
     // buffers have been allocated.
     if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
-        if (mProducer->allowAllocation(false) != android::NO_ERROR) {
+        if (allowAllocation(false) != android::NO_ERROR) {
             ALOGE("allowAllocation(false) failed");
             return false;
         }
@@ -1227,6 +1239,24 @@ bool C2VdaBqBlockPool::Impl::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
 std::optional<unique_id_t> C2VdaBqBlockPool::Impl::getBufferIdFromGraphicBlock(
         const C2Block2D& block) {
     return mDrmHandleManager.getHandle(block.handle()->data[0]);
+}
+
+status_t C2VdaBqBlockPool::Impl::allowAllocation(bool allow) {
+    ALOGV("%s(%d)", __func__, allow);
+
+    if (!mProducer) {
+        ALOGW("%s() mProducer is not initiailzed", __func__);
+        return android::NO_INIT;
+    }
+    if (mAllowAllocation == allow) {
+        return android::NO_ERROR;
+    }
+
+    const auto status = mProducer->allowAllocation(allow);
+    if (status == android::NO_ERROR) {
+        mAllowAllocation = allow;
+    }
+    return status;
 }
 
 C2VdaBqBlockPool::C2VdaBqBlockPool(const std::shared_ptr<C2Allocator>& allocator,
