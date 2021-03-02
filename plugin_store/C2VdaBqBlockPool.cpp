@@ -113,19 +113,6 @@ public:
     }
 };
 
-struct C2VdaBqBlockPoolData : public C2BufferQueueBlockPoolData {
-    C2VdaBqBlockPoolData(uint32_t generation, uint64_t producerId, slot_t slotId,
-                         const sp<HGraphicBufferProducer>& producer, unique_id_t uniqueId,
-                         std::weak_ptr<C2VdaBqBlockPool::Impl> pool);
-    C2VdaBqBlockPoolData() = delete;
-
-    // If |mShared| is false, call detach buffer to BufferQueue via |mPool|
-    virtual ~C2VdaBqBlockPoolData() override;
-
-    const unique_id_t mUniqueId;
-    const std::weak_ptr<C2VdaBqBlockPool::Impl> mPool;
-};
-
 // IGBP expects its user (e.g. C2VdaBqBlockPool) to keep the mapping from dequeued slot index to
 // graphic buffers. Also, C2VdaBqBlockPool guaratees to fetch N fixed set of buffers with buffer
 // identifier. So this class stores the mapping from slot index to buffers and the mapping from
@@ -184,7 +171,7 @@ public:
         return mSlotId2GraphicBuffer.find(slotId) != mSlotId2GraphicBuffer.end();
     }
 
-    void updatePoolData(slot_t slotId, std::weak_ptr<C2VdaBqBlockPoolData> poolData) {
+    void updatePoolData(slot_t slotId, std::weak_ptr<C2BufferQueueBlockPoolData> poolData) {
         ALOGV("%s(slotId=%d)", __func__, slotId);
         ALOG_ASSERT(hasSlotId(slotId));
 
@@ -213,7 +200,7 @@ public:
 
         // Migrate local buffers.
         std::map<slot_t, std::pair<unique_id_t, sp<GraphicBuffer>>> newSlotId2GraphicBuffer;
-        std::map<slot_t, std::weak_ptr<C2VdaBqBlockPoolData>> newSlotId2PoolData;
+        std::map<slot_t, std::weak_ptr<C2BufferQueueBlockPoolData>> newSlotId2PoolData;
         for (const auto& pair : mSlotId2PoolData) {
             auto oldSlot = pair.first;
             auto poolData = pair.second.lock();
@@ -338,7 +325,7 @@ private:
     std::map<slot_t, std::pair<unique_id_t, sp<GraphicBuffer>>> mSlotId2GraphicBuffer;
 
     // Mapping from IGBP slots to the corresponding pool data.
-    std::map<slot_t, std::weak_ptr<C2VdaBqBlockPoolData>> mSlotId2PoolData;
+    std::map<slot_t, std::weak_ptr<C2BufferQueueBlockPoolData>> mSlotId2PoolData;
 
     // Track the buffers registered at the current producer.
     std::map<unique_id_t, sp<GraphicBuffer>> mGraphicBuffersRegistered;
@@ -421,8 +408,6 @@ public:
     std::optional<unique_id_t> getBufferIdFromGraphicBlock(const C2Block2D& block);
 
 private:
-    friend struct C2VdaBqBlockPoolData;
-
     // Requested buffer formats.
     struct BufferFormat {
         BufferFormat(uint32_t width, uint32_t height, uint32_t pixelFormat,
@@ -438,9 +423,6 @@ private:
 
     status_t getFreeSlotLocked(uint32_t width, uint32_t height, uint32_t format,
                                C2MemoryUsage usage, slot_t* slot, sp<Fence>* fence);
-
-    // Called when C2GraphicBlock and its C2VdaBqBlockPoolData are released.
-    void onC2GraphicBlockReleased(unique_id_t uniqueId);
 
     // Queries the generation and usage flags from the given producer by dequeuing and requesting a
     // buffer (the buffer is then detached and freed).
@@ -475,9 +457,6 @@ private:
     size_t mBuffersRequested = 0u;
     // Currently requested buffer formats.
     BufferFormat mBufferFormat;
-
-    // The unique ids of the buffers owned by V4L2DecodeComponent.
-    std::set<unique_id_t> mComponentOwnedUniquedIds;
 
     // Listener for buffer release events.
     sp<EventNotifier> mFetchBufferNotifier;
@@ -574,9 +553,8 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
             return asC2Error(allocationStatus);
         }
     }
-    auto poolData = std::make_shared<C2VdaBqBlockPoolData>(slotBuffer->getGenerationNumber(),
-                                                           mProducerId, slot, mProducer->getBase(),
-                                                           uniqueId, weak_from_this());
+    auto poolData = std::make_shared<C2BufferQueueBlockPoolData>(
+            slotBuffer->getGenerationNumber(), mProducerId, slot, mProducer->getBase());
     mTrackedGraphicBuffers.updatePoolData(slot, poolData);
     *block = _C2BlockFactory::CreateGraphicBlock(std::move(allocation), std::move(poolData));
     if (*block == nullptr) {
@@ -584,10 +562,6 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         return C2_NO_MEMORY;
     }
 
-    ALOGV("%s(): return buffer uniqueId=%u", __func__, uniqueId);
-    ALOG_ASSERT(mComponentOwnedUniquedIds.find(uniqueId) == mComponentOwnedUniquedIds.end(),
-                "uniqueId=%u in mComponentOwnedUniquedIds", uniqueId);
-    mComponentOwnedUniquedIds.insert(uniqueId);
     return C2_OK;
 }
 
@@ -765,7 +739,6 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
     // owned buffers from this set before the next resolution change.
     mTrackedGraphicBuffers.reset();
     mDrmHandleManager.closeAllHandles();
-    mComponentOwnedUniquedIds.clear();
 
     mBuffersRequested = static_cast<size_t>(bufferCount);
 
@@ -865,13 +838,6 @@ void C2VdaBqBlockPool::Impl::configureProducer(const sp<HGraphicBufferProducer>&
     onEventNotified();
 }
 
-void C2VdaBqBlockPool::Impl::onC2GraphicBlockReleased(unique_id_t uniqueId) {
-    ALOGV("%s(uniqueId=%u)", __func__, uniqueId);
-    std::lock_guard<std::mutex> lock(mMutex);
-
-    mComponentOwnedUniquedIds.erase(uniqueId);
-}
-
 bool C2VdaBqBlockPool::Impl::setNotifyBlockAvailableCb(::base::OnceClosure cb) {
     ALOGV("%s()", __func__);
     if (mFetchBufferNotifier == nullptr) {
@@ -969,21 +935,6 @@ std::optional<unique_id_t> C2VdaBqBlockPool::getBufferIdFromGraphicBlock(const C
         return mImpl->getBufferIdFromGraphicBlock(block);
     }
     return std::nullopt;
-}
-
-C2VdaBqBlockPoolData::C2VdaBqBlockPoolData(uint32_t generation, uint64_t producerId, slot_t slotId,
-                                           const sp<HGraphicBufferProducer>& producer,
-                                           unique_id_t uniqueId,
-                                           std::weak_ptr<C2VdaBqBlockPool::Impl> pool)
-      : C2BufferQueueBlockPoolData(generation, producerId, slotId, producer),
-        mUniqueId(uniqueId),
-        mPool(std::move(pool)) {}
-
-C2VdaBqBlockPoolData::~C2VdaBqBlockPoolData() {
-    std::shared_ptr<C2VdaBqBlockPool::Impl> pool = mPool.lock();
-    if (pool) {
-        pool->onC2GraphicBlockReleased(mUniqueId);
-    }
 }
 
 }  // namespace android
