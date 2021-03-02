@@ -638,26 +638,9 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
               mBufferFormat.mHeight, mBufferFormat.mPixelFormat, mBufferFormat.mUsage.expected);
         return C2_BAD_VALUE;
     }
-
-    if (mConfigureProducerError) {
+    if (mConfigureProducerError || !mProducer) {
         ALOGE("%s(): error occurred at previous configureProducer()", __func__);
         return C2_CORRUPTED;
-    }
-
-    if (!mProducer) {
-        // Producer will not be configured in byte-buffer mode. Allocate buffers from allocator
-        // directly as a basic graphic block pool.
-        std::shared_ptr<C2GraphicAllocation> alloc;
-        c2_status_t err = mAllocator->newGraphicAllocation(width, height, format, usage, &alloc);
-        if (err != C2_OK) {
-            return err;
-        }
-        *block = _C2BlockFactory::CreateGraphicBlock(alloc);
-        if (*block == nullptr) {
-            ALOGE("failed to create GraphicBlock: no memory");
-            return C2_NO_MEMORY;
-        }
-        return C2_OK;
     }
 
     if (mPendingBuffersRequested) {
