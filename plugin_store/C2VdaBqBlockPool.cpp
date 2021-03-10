@@ -71,6 +71,32 @@ static c2_status_t asC2Error(status_t err) {
     return C2_CORRUPTED;
 }
 
+// Convert GraphicBuffer to C2GraphicAllocation and wrap producer id and slot index.
+std::shared_ptr<C2GraphicAllocation> ConvertGraphicBuffer2C2Allocation(
+        sp<GraphicBuffer> graphicBuffer, const uint64_t igbpId, const slot_t slot,
+        C2Allocator* const allocator) {
+    ALOGV("%s(idbpId=0x%" PRIx64 ", slot=%d)", __func__, igbpId, slot);
+
+    C2Handle* c2Handle = WrapNativeCodec2GrallocHandle(
+            graphicBuffer->handle, graphicBuffer->width, graphicBuffer->height,
+            graphicBuffer->format, graphicBuffer->usage, graphicBuffer->stride,
+            graphicBuffer->getGenerationNumber(), igbpId, slot);
+    if (!c2Handle) {
+        ALOGE("WrapNativeCodec2GrallocHandle() failed");
+        return nullptr;
+    }
+
+    std::shared_ptr<C2GraphicAllocation> allocation;
+    const auto err = allocator->priorGraphicAllocation(c2Handle, &allocation);
+    if (err != C2_OK) {
+        ALOGE("C2Allocator::priorGraphicAllocation() failed: %d", err);
+        native_handle_delete(c2Handle);
+        return nullptr;
+    }
+
+    return allocation;
+}
+
 // This class is used to notify the listener when a certain event happens.
 class EventNotifier : public virtual android::RefBase {
 public:
@@ -135,22 +161,29 @@ public:
     void reset() {
         mSlotId2GraphicBuffer.clear();
         mSlotId2PoolData.clear();
-        mGraphicBuffersRegistered.clear();
-        mGraphicBuffersToBeMigrated.clear();
+        mAllocationsRegistered.clear();
+        mAllocationsToBeMigrated.clear();
         mMigrateLostBufferCounter = 0;
         mGenerationToBeMigrated = 0;
     }
 
-    void registerUniqueId(unique_id_t uniqueId, sp<GraphicBuffer> slotBuffer) {
+    void registerUniqueId(unique_id_t uniqueId, std::shared_ptr<C2GraphicAllocation> allocation) {
         ALOGV("%s(uniqueId=%u)", __func__, uniqueId);
-        ALOG_ASSERT(slotBuffer != nullptr);
+        ALOG_ASSERT(allocation != nullptr);
 
-        mGraphicBuffersRegistered[uniqueId] = std::move(slotBuffer);
+        mAllocationsRegistered[uniqueId] = std::move(allocation);
+    }
+
+    std::shared_ptr<C2GraphicAllocation> getRegisteredAllocation(unique_id_t uniqueId) {
+        const auto iter = mAllocationsRegistered.find(uniqueId);
+        ALOG_ASSERT(iter != mAllocationsRegistered.end());
+
+        return iter->second;
     }
 
     bool hasUniqueId(unique_id_t uniqueId) const {
-        return mGraphicBuffersRegistered.find(uniqueId) != mGraphicBuffersRegistered.end() ||
-               mGraphicBuffersToBeMigrated.find(uniqueId) != mGraphicBuffersToBeMigrated.end();
+        return mAllocationsRegistered.find(uniqueId) != mAllocationsRegistered.end() ||
+               mAllocationsToBeMigrated.find(uniqueId) != mAllocationsToBeMigrated.end();
     }
 
     void updateSlotBuffer(slot_t slotId, unique_id_t uniqueId, sp<GraphicBuffer> slotBuffer) {
@@ -186,14 +219,14 @@ public:
         mGenerationToBeMigrated = generation;
         mUsageToBeMigrated = usage;
 
-        // Move all buffers to mGraphicBuffersToBeMigrated.
-        for (auto& pair : mGraphicBuffersRegistered) {
-            if (!mGraphicBuffersToBeMigrated.insert(pair).second) {
+        // Move all buffers to mAllocationsToBeMigrated.
+        for (auto& pair : mAllocationsRegistered) {
+            if (!mAllocationsToBeMigrated.insert(pair).second) {
                 ALOGE("%s() duplicated uniqueId=%u", __func__, pair.first);
                 return false;
             }
         }
-        mGraphicBuffersRegistered.clear();
+        mAllocationsRegistered.clear();
 
         ALOGV("%s(producerId=%" PRIx64 ", generation=%u, usage=%" PRIx64 ") before %s", __func__,
               producerId, generation, usage, debugString().c_str());
@@ -235,27 +268,44 @@ public:
 
         // Choose a big enough number to ensure all buffer should be dequeued at least once.
         mMigrateLostBufferCounter = NUM_BUFFER_SLOTS;
-        ALOGD("%s() migrated %zu local buffers", __func__, mGraphicBuffersRegistered.size());
+        ALOGD("%s() migrated %zu local buffers", __func__, mAllocationsRegistered.size());
         return true;
     }
 
     bool needMigrateLostBuffers() const {
-        return mMigrateLostBufferCounter == 0 && !mGraphicBuffersToBeMigrated.empty();
+        return mMigrateLostBufferCounter == 0 && !mAllocationsToBeMigrated.empty();
     }
 
-    status_t migrateLostBuffer(H2BGraphicBufferProducer* const producer, slot_t* newSlot) {
+    status_t migrateLostBuffer(C2Allocator* const allocator,
+                               H2BGraphicBufferProducer* const producer, const uint64_t producerId,
+                               slot_t* newSlot) {
         ALOGV("%s() %s", __func__, debugString().c_str());
 
         if (!needMigrateLostBuffers()) {
             return NO_INIT;
         }
 
-        auto iter = mGraphicBuffersToBeMigrated.begin();
-        const auto uniqueId = iter->first;
-        sp<GraphicBuffer> graphicBuffer = iter->second;
+        auto iter = mAllocationsToBeMigrated.begin();
+        const unique_id_t uniqueId = iter->first;
+        const C2Handle* c2Handle = iter->second->handle();
 
-        // Update generation, and attach GraphicBuffer to producer.
+        // Convert C2GraphicAllocation to GraphicBuffer, and update generation and usage.
+        uint32_t width, height, format, stride, igbpSlot, generation;
+        uint64_t usage, igbpId;
+        _UnwrapNativeCodec2GrallocMetadata(c2Handle, &width, &height, &format, &usage, &stride,
+                                           &generation, &igbpId, &igbpSlot);
+        native_handle_t* grallocHandle = UnwrapNativeCodec2GrallocHandle(c2Handle);
+        sp<GraphicBuffer> graphicBuffer =
+                new GraphicBuffer(grallocHandle, GraphicBuffer::CLONE_HANDLE, width, height, format,
+                                  1, mUsageToBeMigrated, stride);
+        native_handle_delete(grallocHandle);
+        if (graphicBuffer->initCheck() != android::NO_ERROR) {
+            ALOGE("Failed to create GraphicBuffer: %d", graphicBuffer->initCheck());
+            return false;
+        }
         graphicBuffer->setGenerationNumber(mGenerationToBeMigrated);
+
+        // Attach GraphicBuffer to producer.
         const auto attachStatus = producer->attachBuffer(graphicBuffer, newSlot);
         if (attachStatus == TIMED_OUT || attachStatus == INVALID_OPERATION) {
             ALOGV("%s(): No free slot yet.", __func__);
@@ -265,11 +315,23 @@ public:
             ALOGE("%s(): Failed to attach buffer to new producer: %d", __func__, attachStatus);
             return attachStatus;
         }
-
         ALOGD("%s(), migrated lost buffer uniqueId=%u to slot=%d", __func__, uniqueId, *newSlot);
         updateSlotBuffer(*newSlot, uniqueId, graphicBuffer);
-        registerUniqueId(uniqueId, graphicBuffer);
-        mGraphicBuffersToBeMigrated.erase(iter);
+
+        // Wrap the new GraphicBuffer to C2GraphicAllocation and register it.
+        std::shared_ptr<C2GraphicAllocation> allocation =
+                ConvertGraphicBuffer2C2Allocation(graphicBuffer, producerId, *newSlot, allocator);
+        if (!allocation) {
+            return UNKNOWN_ERROR;
+        }
+        registerUniqueId(uniqueId, std::move(allocation));
+
+        // Note: C2ArcProtectedGraphicAllocator releases the protected buffers if all the
+        // corrresponding C2GraphicAllocations are released. To prevent the protected buffer is
+        // released and then allocated again, we release the old C2GraphicAllocation after the new
+        // one has been created.
+        mAllocationsToBeMigrated.erase(iter);
+
         return OK;
     }
 
@@ -284,20 +346,18 @@ public:
         }
     }
 
-    size_t size() const {
-        return mGraphicBuffersRegistered.size() + mGraphicBuffersToBeMigrated.size();
-    }
+    size_t size() const { return mAllocationsRegistered.size() + mAllocationsToBeMigrated.size(); }
 
     std::string debugString() const {
         std::stringstream ss;
         ss << "tracked size: " << size() << std::endl;
         ss << "  registered uniqueIds: ";
-        for (const auto& pair : mGraphicBuffersRegistered) {
+        for (const auto& pair : mAllocationsRegistered) {
             ss << pair.first << ", ";
         }
         ss << std::endl;
         ss << "  to-be-migrated uniqueIds: ";
-        for (const auto& pair : mGraphicBuffersToBeMigrated) {
+        for (const auto& pair : mAllocationsToBeMigrated) {
             ss << pair.first << ", ";
         }
         ss << std::endl;
@@ -308,15 +368,15 @@ public:
 private:
     bool moveBufferToRegistered(unique_id_t uniqueId) {
         ALOGV("%s(uniqueId=%u)", __func__, uniqueId);
-        auto iter = mGraphicBuffersToBeMigrated.find(uniqueId);
-        if (iter == mGraphicBuffersToBeMigrated.end()) {
+        auto iter = mAllocationsToBeMigrated.find(uniqueId);
+        if (iter == mAllocationsToBeMigrated.end()) {
             return false;
         }
-        if (!mGraphicBuffersRegistered.insert(*iter).second) {
+        if (!mAllocationsRegistered.insert(*iter).second) {
             ALOGE("%s() duplicated uniqueId=%u", __func__, uniqueId);
             return false;
         }
-        mGraphicBuffersToBeMigrated.erase(iter);
+        mAllocationsToBeMigrated.erase(iter);
 
         return true;
     }
@@ -328,14 +388,14 @@ private:
     std::map<slot_t, std::weak_ptr<C2BufferQueueBlockPoolData>> mSlotId2PoolData;
 
     // Track the buffers registered at the current producer.
-    std::map<unique_id_t, sp<GraphicBuffer>> mGraphicBuffersRegistered;
+    std::map<unique_id_t, std::shared_ptr<C2GraphicAllocation>> mAllocationsRegistered;
 
     // Track the buffers that should be migrated to the current producer.
-    std::map<unique_id_t, sp<GraphicBuffer>> mGraphicBuffersToBeMigrated;
+    std::map<unique_id_t, std::shared_ptr<C2GraphicAllocation>> mAllocationsToBeMigrated;
 
     // The counter for migrating lost buffers. Count down when a buffer is
     // dequeued from IGBP. When it goes to 0, then we treat the remaining
-    // buffers at |mGraphicBuffersToBeMigrated| lost, and migrate them to
+    // buffers at |mAllocationsToBeMigrated| lost, and migrate them to
     // current IGBP.
     size_t mMigrateLostBufferCounter = 0;
 
@@ -506,53 +566,45 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
     std::tie(uniqueId, slotBuffer) = mTrackedGraphicBuffers.getSlotBuffer(slot);
     ALOGV("%s(): dequeued slot=%d uniqueId=%u", __func__, slot, uniqueId);
 
-    if (!mTrackedGraphicBuffers.hasUniqueId(uniqueId) &&
-        mTrackedGraphicBuffers.size() >= mBuffersRequested) {
-        // The dequeued slot has a pre-allocated buffer whose size and format is as same as
-        // currently requested (but was not dequeued during allocation cycle). Just detach it to
-        // free this slot. And try dequeueBuffer again.
-        ALOGD("dequeued a new slot %d but already allocated enough buffers. Detach it.", slot);
+    if (!mTrackedGraphicBuffers.hasUniqueId(uniqueId)) {
+        if (mTrackedGraphicBuffers.size() >= mBuffersRequested) {
+            // The dequeued slot has a pre-allocated buffer whose size and format is as same as
+            // currently requested (but was not dequeued during allocation cycle). Just detach it to
+            // free this slot. And try dequeueBuffer again.
+            ALOGD("dequeued a new slot %d but already allocated enough buffers. Detach it.", slot);
 
-        if (mProducer->detachBuffer(slot) != OK) {
+            if (mProducer->detachBuffer(slot) != OK) {
+                return C2_CORRUPTED;
+            }
+
+            const auto allocationStatus = allowAllocation(false);
+            if (allocationStatus != OK) {
+                return asC2Error(allocationStatus);
+            }
+            return C2_TIMED_OUT;
+        }
+
+        std::shared_ptr<C2GraphicAllocation> allocation =
+                ConvertGraphicBuffer2C2Allocation(slotBuffer, mProducerId, slot, mAllocator.get());
+        if (!allocation) {
             return C2_CORRUPTED;
         }
+        mTrackedGraphicBuffers.registerUniqueId(uniqueId, std::move(allocation));
 
-        const auto allocationStatus = allowAllocation(false);
-        if (allocationStatus != OK) {
-            return asC2Error(allocationStatus);
-        }
-        return C2_TIMED_OUT;
-    }
-    mTrackedGraphicBuffers.registerUniqueId(uniqueId, slotBuffer);
-
-    // Convert GraphicBuffer to C2GraphicAllocation and wrap producer id and slot index
-    ALOGV("buffer wraps { producer id: %" PRIx64 ", slot: %d }", mProducerId, slot);
-    C2Handle* grallocHandle = android::WrapNativeCodec2GrallocHandle(
-            slotBuffer->handle, slotBuffer->width, slotBuffer->height, slotBuffer->format,
-            slotBuffer->usage, slotBuffer->stride, slotBuffer->getGenerationNumber(), mProducerId,
-            slot);
-    if (!grallocHandle) {
-        ALOGE("WrapNativeCodec2GrallocHandle failed");
-        return C2_NO_MEMORY;
-    }
-
-    std::shared_ptr<C2GraphicAllocation> allocation;
-    c2_status_t err = mAllocator->priorGraphicAllocation(grallocHandle, &allocation);
-    if (err != C2_OK) {
-        ALOGE("priorGraphicAllocation failed: %d", err);
-        return err;
-    }
-
-    ALOGV("%s(): mTrackedGraphicBuffers.size=%zu", __func__, mTrackedGraphicBuffers.size());
-    if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
-        ALOGV("Tracked IGBP slots: %s", mTrackedGraphicBuffers.debugString().c_str());
-        // Already allocated enough buffers, set allowAllocation to false to restrict the
-        // eligible slots to allocated ones for future dequeue.
-        const auto allocationStatus = allowAllocation(false);
-        if (allocationStatus != OK) {
-            return asC2Error(allocationStatus);
+        ALOGV("%s(): mTrackedGraphicBuffers.size=%zu", __func__, mTrackedGraphicBuffers.size());
+        if (mTrackedGraphicBuffers.size() == mBuffersRequested) {
+            ALOGV("Tracked IGBP slots: %s", mTrackedGraphicBuffers.debugString().c_str());
+            // Already allocated enough buffers, set allowAllocation to false to restrict the
+            // eligible slots to allocated ones for future dequeue.
+            const auto allocationStatus = allowAllocation(false);
+            if (allocationStatus != OK) {
+                return asC2Error(allocationStatus);
+            }
         }
     }
+
+    std::shared_ptr<C2GraphicAllocation> allocation =
+            mTrackedGraphicBuffers.getRegisteredAllocation(uniqueId);
     auto poolData = std::make_shared<C2BufferQueueBlockPoolData>(
             slotBuffer->getGenerationNumber(), mProducerId, slot, mProducer->getBase());
     mTrackedGraphicBuffers.updatePoolData(slot, poolData);
@@ -570,7 +622,8 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
                                                    sp<Fence>* fence) {
     if (mTrackedGraphicBuffers.needMigrateLostBuffers()) {
         slot_t newSlot;
-        if (mTrackedGraphicBuffers.migrateLostBuffer(mProducer.get(), &newSlot) == OK) {
+        if (mTrackedGraphicBuffers.migrateLostBuffer(mAllocator.get(), mProducer.get(), mProducerId,
+                                                     &newSlot) == OK) {
             ALOGV("%s(): migrated buffer: slot=%d", __func__, newSlot);
             *slot = newSlot;
             return OK;
