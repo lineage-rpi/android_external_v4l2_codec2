@@ -33,8 +33,6 @@
 
 namespace android {
 namespace {
-// TODO(b/151128291): figure out why we cannot open V4L2Device in 0.5 second?
-const ::base::TimeDelta kBlockingMethodTimeout = ::base::TimeDelta::FromMilliseconds(5000);
 
 // Mask against 30 bits to avoid (undefined) wraparound on signed integer.
 int32_t frameIndexToBitstreamId(c2_cntr64_t frameIndex) {
@@ -180,22 +178,10 @@ V4L2DecodeComponent::V4L2DecodeComponent(const std::string& name, c2_node_id_t i
 V4L2DecodeComponent::~V4L2DecodeComponent() {
     ALOGV("%s()", __func__);
 
-    if (mDecoderThread.IsRunning()) {
-        mDecoderTaskRunner->PostTask(
-                FROM_HERE, ::base::BindOnce(&V4L2DecodeComponent::destroyTask, mWeakThis));
-        mDecoderThread.Stop();
-    }
+    release();
+
     sConcurrentInstances.fetch_sub(1, std::memory_order_relaxed);
     ALOGV("%s() done", __func__);
-}
-
-void V4L2DecodeComponent::destroyTask() {
-    ALOGV("%s()", __func__);
-    ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
-
-    mWeakThisFactory.InvalidateWeakPtrs();
-    mStdWeakThis.reset();
-    mDecoder = nullptr;
 }
 
 c2_status_t V4L2DecodeComponent::start() {
@@ -217,25 +203,22 @@ c2_status_t V4L2DecodeComponent::start() {
     mStdWeakThis = weak_from_this();
 
     c2_status_t status = C2_CORRUPTED;
-    mStartStopDone.Reset();
-    mDecoderTaskRunner->PostTask(FROM_HERE,
-                                 ::base::BindOnce(&V4L2DecodeComponent::startTask, mWeakThis,
-                                                  ::base::Unretained(&status)));
-    if (!mStartStopDone.TimedWait(kBlockingMethodTimeout)) {
-        ALOGE("startTask() timeout...");
-        return C2_TIMED_OUT;
-    }
+    ::base::WaitableEvent done;
+    mDecoderTaskRunner->PostTask(
+            FROM_HERE, ::base::BindOnce(&V4L2DecodeComponent::startTask, mWeakThis,
+                                        ::base::Unretained(&status), ::base::Unretained(&done)));
+    done.Wait();
 
     if (status == C2_OK) mComponentState.store(ComponentState::RUNNING);
     return status;
 }
 
-void V4L2DecodeComponent::startTask(c2_status_t* status) {
+void V4L2DecodeComponent::startTask(c2_status_t* status, ::base::WaitableEvent* done) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
     ::base::ScopedClosureRunner done_caller(
-            ::base::BindOnce(&::base::WaitableEvent::Signal, ::base::Unretained(&mStartStopDone)));
+            ::base::BindOnce(&::base::WaitableEvent::Signal, ::base::Unretained(done)));
     *status = C2_CORRUPTED;
 
     const auto codec = mIntfImpl->getVideoCodec();
@@ -314,19 +297,13 @@ c2_status_t V4L2DecodeComponent::stop() {
         return C2_BAD_STATE;
     }
 
-    // Return immediately if the component is already stopped.
-    if (!mDecoderThread.IsRunning()) return C2_OK;
-
-    mStartStopDone.Reset();
-    mDecoderTaskRunner->PostTask(FROM_HERE,
-                                 ::base::BindOnce(&V4L2DecodeComponent::stopTask, mWeakThis));
-    if (!mStartStopDone.TimedWait(kBlockingMethodTimeout)) {
-        ALOGE("stopTask() timeout...");
-        return C2_TIMED_OUT;
+    if (mDecoderThread.IsRunning()) {
+        mDecoderTaskRunner->PostTask(FROM_HERE,
+                                     ::base::BindOnce(&V4L2DecodeComponent::stopTask, mWeakThis));
+        mDecoderThread.Stop();
+        mDecoderTaskRunner = nullptr;
     }
 
-    mDecoderThread.Stop();
-    mDecoderTaskRunner = nullptr;
     mComponentState.store(ComponentState::STOPPED);
     return C2_OK;
 }
@@ -337,11 +314,38 @@ void V4L2DecodeComponent::stopTask() {
 
     reportAbandonedWorks();
     mIsDraining = false;
-    mDecoder = nullptr;
+
+    releaseTask();
+}
+
+c2_status_t V4L2DecodeComponent::reset() {
+    ALOGV("%s()", __func__);
+
+    return stop();
+}
+
+c2_status_t V4L2DecodeComponent::release() {
+    ALOGV("%s()", __func__);
+    std::lock_guard<std::mutex> lock(mStartStopLock);
+
+    if (mDecoderThread.IsRunning()) {
+        mDecoderTaskRunner->PostTask(
+                FROM_HERE, ::base::BindOnce(&V4L2DecodeComponent::releaseTask, mWeakThis));
+        mDecoderThread.Stop();
+        mDecoderTaskRunner = nullptr;
+    }
+
+    mComponentState.store(ComponentState::RELEASED);
+    return C2_OK;
+}
+
+void V4L2DecodeComponent::releaseTask() {
+    ALOGV("%s()", __func__);
+    ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
+
     mWeakThisFactory.InvalidateWeakPtrs();
     mStdWeakThis.reset();
-
-    mStartStopDone.Signal();
+    mDecoder = nullptr;
 }
 
 c2_status_t V4L2DecodeComponent::setListener_vb(
@@ -850,20 +854,6 @@ void V4L2DecodeComponent::reportError(c2_status_t error) {
         return;
     }
     mListener->onError_nb(std::move(sharedThis), static_cast<uint32_t>(error));
-}
-
-c2_status_t V4L2DecodeComponent::reset() {
-    ALOGV("%s()", __func__);
-
-    return stop();
-}
-
-c2_status_t V4L2DecodeComponent::release() {
-    ALOGV("%s()", __func__);
-
-    c2_status_t ret = reset();
-    mComponentState.store(ComponentState::RELEASED);
-    return ret;
 }
 
 c2_status_t V4L2DecodeComponent::announce_nb(const std::vector<C2WorkOutline>& /* items */) {

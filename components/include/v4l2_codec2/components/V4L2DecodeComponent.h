@@ -60,9 +60,9 @@ private:
     static const char* ComponentStateToString(ComponentState state);
 
     // Handle C2Component's public methods on |mDecoderTaskRunner|.
-    void destroyTask();
-    void startTask(c2_status_t* status);
+    void startTask(c2_status_t* status, ::base::WaitableEvent* done);
     void stopTask();
+    void releaseTask();
     void queueTask(std::unique_ptr<C2Work> work);
     void flushTask();
     void drainTask();
@@ -123,7 +123,6 @@ private:
 
     // The mutex lock to synchronize start/stop/reset/release calls.
     std::mutex mStartStopLock;
-    ::base::WaitableEvent mStartStopDone;
 
     // The color aspects parameter for current decoded output buffers.
     std::shared_ptr<C2StreamColorAspectsInfo::output> mCurrentColorAspects;
