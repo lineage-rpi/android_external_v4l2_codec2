@@ -18,8 +18,8 @@ namespace android {
 class MediaCodecEncoder {
 public:
     // Checks the argument and create MediaCodecEncoder instance.
-    static std::unique_ptr<MediaCodecEncoder> Create(
-            std::string input_path, Size visible_size, bool use_sw_encoder);
+    static std::unique_ptr<MediaCodecEncoder> Create(std::string input_path, VideoCodecType type,
+                                                     Size visible_size, bool use_sw_encoder);
     MediaCodecEncoder() = delete;
     ~MediaCodecEncoder();
 
@@ -54,8 +54,9 @@ public:
     void set_run_at_fps(bool run_at_fps);
 
 private:
-    MediaCodecEncoder(AMediaCodec* codec, std::unique_ptr<CachedInputFileStream> inputFile,
-                      Size size, size_t bufferSize, size_t numTotalFrames);
+    MediaCodecEncoder(AMediaCodec* codec, VideoCodecType type,
+                      std::unique_ptr<CachedInputFileStream> inputFile, Size size,
+                      size_t bufferSize, size_t numTotalFrames);
 
     // Read the content from the |input_file_| and feed into the input buffer.
     // |index| is the index of the target input buffer.
@@ -80,6 +81,8 @@ private:
 
     // The target mediacodec encoder.
     AMediaCodec* codec_;
+    // The output codec type.
+    VideoCodecType type_;
     // The number of frames to encode.
     size_t num_encoded_frames_;
     // The input video raw stream file. The file size must be the multiple of
