@@ -729,6 +729,12 @@ c2_status_t C2VdaBqBlockPool::Impl::requestNewBufferSet(int32_t bufferCount, uin
         ALOGD("No HGraphicBufferProducer is configured...");
         return C2_NO_INIT;
     }
+    if (mBuffersRequested == static_cast<size_t>(bufferCount) && mBufferFormat.mWidth == width &&
+        mBufferFormat.mHeight == height && mBufferFormat.mPixelFormat == format &&
+        mBufferFormat.mUsage.expected == usage.expected) {
+        ALOGD("%s() Request the same format and amount of buffers, skip", __func__);
+        return C2_OK;
+    }
 
     const auto status = allowAllocation(true);
     if (status != OK) {
