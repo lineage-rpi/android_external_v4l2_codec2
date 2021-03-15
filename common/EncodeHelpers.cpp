@@ -41,6 +41,14 @@ media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profil
         return media::VideoCodecProfile::H264PROFILE_STEREOHIGH;
     case C2Config::PROFILE_AVC_MULTIVIEW_HIGH:
         return media::VideoCodecProfile::H264PROFILE_MULTIVIEWHIGH;
+    case C2Config::PROFILE_VP9_0:
+        return media::VideoCodecProfile::VP9PROFILE_PROFILE0;
+    case C2Config::PROFILE_VP9_1:
+        return media::VideoCodecProfile::VP9PROFILE_PROFILE1;
+    case C2Config::PROFILE_VP9_2:
+        return media::VideoCodecProfile::VP9PROFILE_PROFILE2;
+    case C2Config::PROFILE_VP9_3:
+        return media::VideoCodecProfile::VP9PROFILE_PROFILE3;
     default:
         ALOGE("Unrecognizable C2 profile (value = 0x%x)...", profile);
         return media::VideoCodecProfile::VIDEO_CODEC_PROFILE_UNKNOWN;
