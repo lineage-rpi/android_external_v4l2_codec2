@@ -581,7 +581,7 @@ void V4L2Decoder::onVideoFrameReady(
     }
 
     if (!outputBuffer) {
-        ALOGE("V4L2 buffer not available.");
+        ALOGE("V4L2 buffer not available. blockId=%u", blockId);
         onError();
         return;
     }
