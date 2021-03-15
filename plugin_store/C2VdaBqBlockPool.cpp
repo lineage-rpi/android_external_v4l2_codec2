@@ -90,6 +90,7 @@ std::shared_ptr<C2GraphicAllocation> ConvertGraphicBuffer2C2Allocation(
     const auto err = allocator->priorGraphicAllocation(c2Handle, &allocation);
     if (err != C2_OK) {
         ALOGE("C2Allocator::priorGraphicAllocation() failed: %d", err);
+        native_handle_close(c2Handle);
         native_handle_delete(c2Handle);
         return nullptr;
     }
