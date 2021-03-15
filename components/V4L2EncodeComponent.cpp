@@ -622,11 +622,18 @@ bool V4L2EncodeComponent::initializeEncoder() {
     mKeyFrameCounter = 0;
     mCSDSubmitted = false;
 
+    // Get the requested profile. The codec2 framework doesn't define any profiles for VP8 as VP8
+    // only supports a single profile, so we have to deduce the profile from the MIME type.
+    media::VideoCodecProfile outputProfile;
+    if (strcmp(mInterface->getOutputMediaType(), MEDIA_MIMETYPE_VIDEO_VP8) == 0) {
+        outputProfile = media::VideoCodecProfile::VP8PROFILE_ANY;
+    } else {
+        outputProfile = c2ProfileToVideoCodecProfile(mInterface->getOutputProfile());
+    }
+
     // Open the V4L2 device for encoding to the requested output format.
     // TODO(dstaessens): Do we need to close the device first if already opened?
     // TODO(dstaessens): Avoid conversion to VideoCodecProfile and use C2Config::profile_t directly.
-    media::VideoCodecProfile outputProfile =
-            c2ProfileToVideoCodecProfile(mInterface->getOutputProfile());
     uint32_t outputPixelFormat =
             media::V4L2Device::VideoCodecProfileToV4L2PixFmt(outputProfile, false);
     if (!outputPixelFormat) {
@@ -679,8 +686,11 @@ bool V4L2EncodeComponent::initializeEncoder() {
     if (!createInputBuffers()) return false;
 
     // Configure the device, setting all required controls.
-    uint8_t level = c2LevelToV4L2Level(mInterface->getOutputLevel());
-    if (!configureDevice(outputProfile, level)) return false;
+    std::optional<uint8_t> h264Level;
+    if (outputProfile >= media::H264PROFILE_MIN && outputProfile <= media::H264PROFILE_MAX) {
+        h264Level = c2LevelToV4L2Level(mInterface->getOutputLevel());
+    }
+    if (!configureDevice(outputProfile, h264Level)) return false;
 
     // We're ready to start encoding now.
     setEncoderState(EncoderState::WAITING_FOR_INPUT);

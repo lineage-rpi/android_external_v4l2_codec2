@@ -33,6 +33,7 @@ public:
     // Note: these getters are not thread-safe. For dynamic parameters, component should use
     // formal query API for C2ComponentInterface instead.
     c2_status_t status() const { return mInitStatus; }
+    const char* getOutputMediaType() const { return mOutputMediaType->m.value; }
     C2Config::profile_t getOutputProfile() const { return mProfileLevel->profile; }
     C2Config::level_t getOutputLevel() const { return mProfileLevel->level; }
     const media::Size getInputVisibleSize() const {
@@ -46,10 +47,14 @@ protected:
     void Initialize(const C2String& name);
 
     // Configurable parameter setters.
-    static C2R ProfileLevelSetter(bool mayBlock, C2P<C2StreamProfileLevelInfo::output>& info,
-                                  const C2P<C2StreamPictureSizeInfo::input>& videosize,
-                                  const C2P<C2StreamFrameRateInfo::output>& frameRate,
-                                  const C2P<C2StreamBitrateInfo::output>& bitrate);
+    static C2R H264ProfileLevelSetter(bool mayBlock, C2P<C2StreamProfileLevelInfo::output>& info,
+                                      const C2P<C2StreamPictureSizeInfo::input>& videosize,
+                                      const C2P<C2StreamFrameRateInfo::output>& frameRate,
+                                      const C2P<C2StreamBitrateInfo::output>& bitrate);
+    static C2R VP9ProfileLevelSetter(bool mayBlock, C2P<C2StreamProfileLevelInfo::output>& info,
+                                     const C2P<C2StreamPictureSizeInfo::input>& videosize,
+                                     const C2P<C2StreamFrameRateInfo::output>& frameRate,
+                                     const C2P<C2StreamBitrateInfo::output>& bitrate);
 
     static C2R SizeSetter(bool mayBlock, C2P<C2StreamPictureSizeInfo::input>& videoSize);
 
