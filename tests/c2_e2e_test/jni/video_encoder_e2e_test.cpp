@@ -71,7 +71,6 @@ public:
     //   (see http://www.fourcc.org/yuv.php#IYUV).
     // - |width| and |height| are in pixels.
     // - |profile| to encode into (values of VideoCodecProfile).
-    //   NOTE: Only H264PROFILE_MAIN(1) is supported. Now we ignore this value.
     // - |output_file_path| filename to save the encoded stream to (optional).
     //   The format for H264 is Annex-B byte stream.
     // - |requested_bitrate| requested bitrate in bits per second.
@@ -98,7 +97,21 @@ public:
 
         if (fields.size() >= 4 && !fields[3].empty()) {
             int profile = stoi(fields[3]);
-            if (profile != 1) printf("[WARN] Only H264PROFILE_MAIN(1) is supported.\n");
+            switch (profile) {
+            case VideoCodecProfile::H264PROFILE_MAIN:
+                codec_ = VideoCodecType::H264;
+                break;
+            case VideoCodecProfile::VP8PROFILE_ANY:
+                codec_ = VideoCodecType::VP8;
+                break;
+            case VideoCodecProfile::VP9PROFILE_PROFILE0:
+                codec_ = VideoCodecType::VP9;
+                break;
+            default:
+                printf("[WARN] Only H264PROFILE_MAIN, VP8PROFILE_ANY and VP9PROFILE_PROFILE0 are"
+                       "supported.\n");
+                codec_ = VideoCodecType::H264;
+            }
         }
 
         if (fields.size() >= 5 && !fields[4].empty()) {
@@ -141,6 +154,7 @@ public:
     }
 
     Size visible_size() const { return visible_size_; }
+    VideoCodecType codec() const { return codec_; }
     std::string input_file_path() const { return input_file_path_; }
     std::string output_file_path() const { return output_file_path_; }
     int requested_bitrate() const { return requested_bitrate_; }
@@ -159,6 +173,7 @@ private:
     ConfigureCallback* configure_cb_;
 
     Size visible_size_;
+    VideoCodecType codec_;
     std::string input_file_path_;
     std::string output_file_path_;
 
@@ -171,12 +186,10 @@ private:
 class C2VideoEncoderE2ETest : public testing::Test {
 public:
     // Callback functions of getting output buffers from encoder.
-    void WriteOutputBufferToFile(const uint8_t* data, const AMediaCodecBufferInfo& info) {
-        if (output_file_.is_open()) {
-            output_file_.write(reinterpret_cast<const char*>(data), info.size);
-            if (output_file_.fail()) {
-                printf("[ERR] Failed to write encoded buffer into file.\n");
-            }
+    void WriteOutputBufferToFile(VideoCodecType type, const uint8_t* data,
+                                 const AMediaCodecBufferInfo& info) {
+        if (output_file_.IsOpen() && !output_file_.WriteFrame(info.size, data)) {
+            printf("[ERR] Failed to write encoded buffer into file.\n");
         }
     }
 
@@ -186,8 +199,8 @@ public:
 
 protected:
     void SetUp() override {
-        encoder_ = MediaCodecEncoder::Create(
-                g_env->input_file_path(), g_env->visible_size(), g_env->use_sw_encoder());
+        encoder_ = MediaCodecEncoder::Create(g_env->input_file_path(), g_env->codec(),
+                                             g_env->visible_size(), g_env->use_sw_encoder());
         ASSERT_TRUE(encoder_);
         g_env->configure_cb()->OnCodecReady(encoder_.get());
 
@@ -201,18 +214,22 @@ protected:
     void TearDown() override {
         EXPECT_TRUE(encoder_->Stop());
 
-        output_file_.close();
+        output_file_.Close();
         encoder_.reset();
     }
 
     bool CreateOutputFile() {
         if (g_env->output_file_path().empty()) return false;
 
-        output_file_.open(g_env->output_file_path(), std::ofstream::binary);
-        if (!output_file_.is_open()) {
+        if (!output_file_.Open(g_env->output_file_path(), g_env->codec())) {
             printf("[ERR] Failed to open file: %s\n", g_env->output_file_path().c_str());
             return false;
         }
+        if (!output_file_.WriteHeader(g_env->visible_size(), g_env->requested_framerate(), 0)) {
+            printf("[ERR] Failed to write file header\n");
+            return false;
+        }
+
         return true;
     }
 
@@ -224,7 +241,7 @@ protected:
     std::unique_ptr<MediaCodecEncoder> encoder_;
 
     // The output file to write the encoded video bitstream.
-    std::ofstream output_file_;
+    OutputFile output_file_;
     // Used to accumulate the output buffer size.
     size_t total_output_buffer_size_;
 };
@@ -270,7 +287,7 @@ TEST_F(C2VideoEncoderE2ETest, TestSimpleEncode) {
     // Write the output buffers to file.
     if (CreateOutputFile()) {
         encoder_->SetOutputBufferReadyCb(std::bind(&C2VideoEncoderE2ETest::WriteOutputBufferToFile,
-                                                   this, std::placeholders::_1,
+                                                   this, g_env->codec(), std::placeholders::_1,
                                                    std::placeholders::_2));
     }
     encoder_->set_run_at_fps(g_env->run_at_fps());
