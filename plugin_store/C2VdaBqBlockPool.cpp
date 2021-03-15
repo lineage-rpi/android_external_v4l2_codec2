@@ -614,6 +614,23 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         return C2_NO_MEMORY;
     }
 
+    // Wait for acquire fence at the last point of returning buffer.
+    if (fence) {
+        const auto fenceStatus = waitFence(slot, fence);
+        if (fenceStatus != OK) {
+            return asC2Error(fenceStatus);
+        }
+
+        if (mRenderCallback) {
+            nsecs_t signalTime = fence->getSignalTime();
+            if (signalTime >= 0 && signalTime < INT64_MAX) {
+                mRenderCallback(mProducerId, slot, signalTime);
+            } else {
+                ALOGV("got fence signal time of %" PRId64 " nsec", signalTime);
+            }
+        }
+    }
+
     return C2_OK;
 }
 
@@ -656,24 +673,6 @@ status_t C2VdaBqBlockPool::Impl::getFreeSlotLocked(uint32_t width, uint32_t heig
             return UNKNOWN_ERROR;
         }
         mTrackedGraphicBuffers.updateSlotBuffer(*slot, *uniqueId, std::move(slotBuffer));
-    }
-
-    // Wait for acquire fence if we get one.
-    if (*fence) {
-        // TODO(b/178770649): Move the fence waiting to the last point of returning buffer.
-        const auto fenceStatus = waitFence(*slot, *fence);
-        if (fenceStatus != OK) {
-            return fenceStatus;
-        }
-
-        if (mRenderCallback) {
-            nsecs_t signalTime = (*fence)->getSignalTime();
-            if (signalTime >= 0 && signalTime < INT64_MAX) {
-                mRenderCallback(mProducerId, *slot, signalTime);
-            } else {
-                ALOGV("got fence signal time of %" PRId64 " nsec", signalTime);
-            }
-        }
     }
 
     ALOGV("%s(%ux%u): dequeued slot=%d", __func__, mBufferFormat.mWidth, mBufferFormat.mHeight,
