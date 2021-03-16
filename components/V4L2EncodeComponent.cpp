@@ -558,20 +558,18 @@ void V4L2EncodeComponent::onDrainDone(bool success) {
 
     // Find the first work item marked as EOS. This might not be the first item in the queue, as
     // previous buffers in the queue might still be waiting for their associated input buffers.
-    C2Work* eosWork = nullptr;
-    for (auto it = mWorkQueue.cbegin(); it != mWorkQueue.cend(); ++it) {
-        if ((it->get()->input.flags & C2FrameData::FLAG_END_OF_STREAM) &&
-            !(it->get()->worklets.back()->output.flags & C2FrameData::FLAG_END_OF_STREAM)) {
-            eosWork = it->get();
-            break;
-        }
-    }
-    if (!eosWork) {
+    auto it = std::find_if(
+            mWorkQueue.cbegin(), mWorkQueue.cend(), [](const std::unique_ptr<C2Work>& work) {
+                return ((work->input.flags & C2FrameData::FLAG_END_OF_STREAM) &&
+                        !(work->worklets.back()->output.flags & C2FrameData::FLAG_END_OF_STREAM));
+            });
+    if (it == mWorkQueue.end()) {
         ALOGW("No EOS work item found in queue");
         return;
     }
 
     // Mark the item in the output work queue as EOS done.
+    C2Work* eosWork = it->get();
     eosWork->worklets.back()->output.flags = C2FrameData::FLAG_END_OF_STREAM;
 
     // Draining is done which means all buffers on the device output queue have been returned, but
