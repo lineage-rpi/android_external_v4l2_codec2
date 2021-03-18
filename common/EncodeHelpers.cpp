@@ -8,7 +8,6 @@
 #include <v4l2_codec2/common/EncodeHelpers.h>
 
 #include <linux/v4l2-controls.h>
-#include <string.h>
 
 #include <C2AllocatorGralloc.h>
 #include <cutils/native_handle.h>
