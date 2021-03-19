@@ -6,6 +6,7 @@
 #ifndef FOURCC_H_
 #define FOURCC_H_
 
+#include <optional>
 #include <stdint.h>
 #include <string>
 
@@ -119,7 +120,7 @@ class Fourcc {
 
   // Builds a Fourcc from a given fourcc code. This will return a valid
   // Fourcc if the argument is part of the |Value| enum, or nullopt otherwise.
-  static base::Optional<Fourcc> FromUint32(uint32_t fourcc);
+  static std::optional<Fourcc> FromUint32(uint32_t fourcc);
 
   // Converts a VideoPixelFormat to Fourcc.
   // Returns nullopt for invalid input.
@@ -130,7 +131,7 @@ class Fourcc {
       bool single_planar = true);
   // Converts a V4L2PixFmt to Fourcc.
   // Returns nullopt for invalid input.
-  static base::Optional<Fourcc> FromV4L2PixFmt(uint32_t v4l2_pix_fmt);
+  static std::optional<Fourcc> FromV4L2PixFmt(uint32_t v4l2_pix_fmt);
 
   // Value getters:
   // Returns the VideoPixelFormat counterpart of the value.
