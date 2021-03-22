@@ -15,8 +15,8 @@
 #include <base/files/scoped_file.h>
 #include <base/memory/ptr_util.h>
 #include <log/log.h>
+#include <ui/Rect.h>
 
-#include <rect.h>
 #include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
 
@@ -472,7 +472,8 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     }
 
     mInputLayout = layout.value();
-    if (!media::Rect(mInputLayout->coded_size()).Contains(media::Rect(mVisibleSize))) {
+    if (!contains(Rect(mInputLayout->coded_size().width(), mInputLayout->coded_size().height()),
+                  Rect(mVisibleSize.width(), mVisibleSize.height()))) {
         ALOGE("Input size %s exceeds encoder capability, encoder can handle %s",
               mVisibleSize.ToString().c_str(), mInputLayout->coded_size().ToString().c_str());
         return false;
@@ -497,12 +498,12 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     // The coded input size might be different from the visible size due to alignment requirements,
     // So we need to specify the visible rectangle. Note that this rectangle might still be adjusted
     // due to hardware limitations.
-    media::Rect visibleRectangle(mVisibleSize.width(), mVisibleSize.height());
+    Rect visibleRectangle(mVisibleSize.width(), mVisibleSize.height());
 
     struct v4l2_rect rect;
     memset(&rect, 0, sizeof(rect));
-    rect.left = visibleRectangle.x();
-    rect.top = visibleRectangle.y();
+    rect.left = visibleRectangle.left;
+    rect.top = visibleRectangle.top;
     rect.width = visibleRectangle.width();
     rect.height = visibleRectangle.height();
 
@@ -516,8 +517,9 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     selection_arg.target = V4L2_SEL_TGT_CROP;
     selection_arg.r = rect;
     if (mDevice->ioctl(VIDIOC_S_SELECTION, &selection_arg) == 0) {
-        visibleRectangle = media::Rect(selection_arg.r.left, selection_arg.r.top,
-                                       selection_arg.r.width, selection_arg.r.height);
+        visibleRectangle = Rect(selection_arg.r.left, selection_arg.r.top,
+                                selection_arg.r.left + selection_arg.r.width,
+                                selection_arg.r.top + selection_arg.r.height);
     } else {
         struct v4l2_crop crop;
         memset(&crop, 0, sizeof(v4l2_crop));
@@ -528,7 +530,8 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
             ALOGE("Failed to crop to specified visible rectangle");
             return false;
         }
-        visibleRectangle = media::Rect(crop.c.left, crop.c.top, crop.c.width, crop.c.height);
+        visibleRectangle = Rect(crop.c.left, crop.c.top, crop.c.left + crop.c.width,
+                                crop.c.top + crop.c.height);
     }
 
     ALOGV("Input format set to %s (size: %s, adjusted size: %dx%d, coded size: %s)",

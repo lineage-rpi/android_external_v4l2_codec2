@@ -34,11 +34,11 @@ const std::vector<int>& VideoFrame::getFDs() const {
     return mFds;
 }
 
-void VideoFrame::setVisibleRect(const media::Rect& visibleRect) {
+void VideoFrame::setVisibleRect(const Rect& visibleRect) {
     mVisibleRect = visibleRect;
 }
 
-const media::Rect& VideoFrame::getVisibleRect() const {
+const Rect& VideoFrame::getVisibleRect() const {
     return mVisibleRect;
 }
 

@@ -21,7 +21,6 @@
 #include <vector>
 
 #include "base/memory/ref_counted.h"
-#include "rect.h"
 #include "size.h"
 #include "video_frame_layout.h"
 #include "video_pixel_format.h"
