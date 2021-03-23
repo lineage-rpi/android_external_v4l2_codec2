@@ -88,7 +88,7 @@ size_t VideoFrameLayout::NumPlanes(VideoPixelFormat format) {
 // static
 std::optional<VideoFrameLayout> VideoFrameLayout::Create(
     VideoPixelFormat format,
-    const Size& coded_size) {
+    const android::ui::Size& coded_size) {
   return CreateWithStrides(format, coded_size,
                            std::vector<int32_t>(NumPlanes(format), 0));
 }
@@ -96,7 +96,7 @@ std::optional<VideoFrameLayout> VideoFrameLayout::Create(
 // static
 std::optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
     VideoPixelFormat format,
-    const Size& coded_size,
+    const android::ui::Size& coded_size,
     std::vector<int32_t> strides) {
   return CreateWithPlanes(format, coded_size, PlanesFromStrides(strides));
 }
@@ -104,7 +104,7 @@ std::optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
 // static
 std::optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
     VideoPixelFormat format,
-    const Size& coded_size,
+    const android::ui::Size& coded_size,
     std::vector<ColorPlaneLayout> planes,
     size_t buffer_addr_align,
     uint64_t modifier) {
@@ -120,7 +120,7 @@ std::optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
 
 std::optional<VideoFrameLayout> VideoFrameLayout::CreateMultiPlanar(
     VideoPixelFormat format,
-    const Size& coded_size,
+    const android::ui::Size& coded_size,
     std::vector<ColorPlaneLayout> planes,
     size_t buffer_addr_align,
     uint64_t modifier) {
@@ -135,7 +135,7 @@ std::optional<VideoFrameLayout> VideoFrameLayout::CreateMultiPlanar(
 }
 
 VideoFrameLayout::VideoFrameLayout(VideoPixelFormat format,
-                                   const Size& coded_size,
+                                   const android::ui::Size& coded_size,
                                    std::vector<ColorPlaneLayout> planes,
                                    bool is_multi_planar,
                                    size_t buffer_addr_align,
@@ -167,7 +167,8 @@ bool VideoFrameLayout::operator!=(const VideoFrameLayout& rhs) const {
 std::ostream& operator<<(std::ostream& ostream,
                          const VideoFrameLayout& layout) {
   ostream << "VideoFrameLayout(format: " << layout.format()
-          << ", coded_size: " << layout.coded_size().ToString()
+          << ", coded_size: " << layout.coded_size().width << "x"
+          << layout.coded_size().height
           << ", planes (stride, offset, size): "
           << VectorToString(layout.planes())
           << ", is_multi_planar: " << layout.is_multi_planar()

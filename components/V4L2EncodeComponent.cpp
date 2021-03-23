@@ -22,8 +22,8 @@
 #include <log/log.h>
 #include <media/stagefright/MediaDefs.h>
 #include <ui/GraphicBuffer.h>
+#include <ui/Size.h>
 
-#include <size.h>
 #include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/EncodeHelpers.h>
 #include <v4l2_codec2/common/FormatConverter.h>
@@ -131,7 +131,7 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
 }
 
 // Get the video frame stride for the specified |format| and |size|.
-std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, media::Size size) {
+std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, ui::Size size) {
     // Fetch a graphic block from the pool to determine the stride.
     std::shared_ptr<C2BlockPool> pool;
     c2_status_t status = GetCodec2BlockPool(C2BlockPool::BASIC_GRAPHIC, nullptr, &pool);
@@ -147,15 +147,14 @@ std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, medi
                                        : HalPixelFormat::YCBCR_420_888;
 
     std::shared_ptr<C2GraphicBlock> block;
-    status = pool->fetchGraphicBlock(size.width(), size.height(), static_cast<uint32_t>(halFormat),
+    status = pool->fetchGraphicBlock(size.width, size.height, static_cast<uint32_t>(halFormat),
                                      C2MemoryUsage(C2MemoryUsage::CPU_READ), &block);
     if (status != C2_OK) {
         ALOGE("Failed to fetch graphic block (err=%d)", status);
         return std::nullopt;
     }
 
-    const C2ConstGraphicBlock constBlock =
-            block->share(C2Rect(size.width(), size.height()), C2Fence());
+    const C2ConstGraphicBlock constBlock = block->share(C2Rect(size.width, size.height), C2Fence());
     media::VideoPixelFormat pixelFormat;
     std::optional<std::vector<VideoFramePlane>> planes =
             getVideoFrameLayout(constBlock, &pixelFormat);

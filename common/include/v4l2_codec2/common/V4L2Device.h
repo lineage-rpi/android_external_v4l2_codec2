@@ -21,7 +21,7 @@
 #include <base/memory/ref_counted.h>
 
 #include <fourcc.h>
-#include <size.h>
+#include <ui/Size.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
 #include <video_codecs.h>
 #include <video_frame.h>
@@ -197,14 +197,14 @@ public:
     // |v4l2_format| reflecting the actual format is returned. It is guaranteed to feature the
     // specified |fourcc|, but any other parameter (including |size| and |bufferSize| may have been
     // adjusted by the driver, so the caller must check their values.
-    std::optional<struct v4l2_format> setFormat(uint32_t fourcc, const media::Size& size,
+    std::optional<struct v4l2_format> setFormat(uint32_t fourcc, const ui::Size& size,
                                                 size_t bufferSize,
                                                 uint32_t stride = 0) WARN_UNUSED_RESULT;
 
     // Identical to |setFormat|, but does not actually apply the format, and can be called anytime.
     // Returns an adjusted V4L2 format if |fourcc| is supported by the queue, or |nullopt| if
     // |fourcc| is not supported or an ioctl error happened.
-    std::optional<struct v4l2_format> tryFormat(uint32_t fourcc, const media::Size& size,
+    std::optional<struct v4l2_format> tryFormat(uint32_t fourcc, const ui::Size& size,
                                                 size_t bufferSize) WARN_UNUSED_RESULT;
 
     // Returns the currently set format on the queue. The result is returned as a std::pair where
@@ -323,8 +323,8 @@ public:
     // Specification of an encoding profile supported by an encoder.
     struct SupportedEncodeProfile {
         media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
-        media::Size min_resolution;
-        media::Size max_resolution;
+        ui::Size min_resolution;
+        ui::Size max_resolution;
         uint32_t max_framerate_numerator = 0;
         uint32_t max_framerate_denominator = 0;
     };
@@ -334,8 +334,8 @@ public:
     // |max_resolution| and |min_resolution| are inclusive.
     struct SupportedDecodeProfile {
         media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
-        media::Size max_resolution;
-        media::Size min_resolution;
+        ui::Size max_resolution;
+        ui::Size min_resolution;
         bool encrypted_only = false;
     };
     using SupportedDecodeProfiles = std::vector<SupportedDecodeProfile>;
@@ -349,7 +349,7 @@ public:
     std::vector<media::VideoCodecProfile> v4L2PixFmtToVideoCodecProfiles(uint32_t pixFmt,
                                                                          bool isEncoder);
     // Calculates the largest plane's allocation size requested by a V4L2 device.
-    static media::Size allocatedSizeFromV4L2Format(const struct v4l2_format& format);
+    static ui::Size allocatedSizeFromV4L2Format(const struct v4l2_format& format);
 
     // Convert required H264 profile and level to V4L2 enums.
     static int32_t videoCodecProfileToV4L2H264Profile(media::VideoCodecProfile profile);
@@ -426,8 +426,8 @@ public:
 
     // Get minimum and maximum resolution for fourcc |pixelFormat| and store to |minResolution| and
     // |maxResolution|.
-    void getSupportedResolution(uint32_t pixelFormat, media::Size* minResolution,
-                                media::Size* maxResolution);
+    void getSupportedResolution(uint32_t pixelFormat, ui::Size* minResolution,
+                                ui::Size* maxResolution);
 
     std::vector<uint32_t> enumerateSupportedPixelformats(v4l2_buf_type bufType);
 
