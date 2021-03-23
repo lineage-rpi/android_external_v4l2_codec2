@@ -16,7 +16,7 @@
 
 // Default policy for codec2.0 service.
 static constexpr char kBaseSeccompPolicyPath[] =
-        "/vendor/etc/seccomp_policy/android.hardware.media.c2@1.1-default-seccomp_policy";
+        "/vendor/etc/seccomp_policy/android.hardware.media.c2@1.2-default-seccomp_policy";
 
 // Additional device-specific seccomp permissions can be added in this file.
 static constexpr char kExtSeccompPolicyPath[] =

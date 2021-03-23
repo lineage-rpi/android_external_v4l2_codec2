@@ -31,7 +31,7 @@ cc_binary {
         "libutils",
     ],
 
-    required: ["android.hardware.media.c2@1.1-default-seccomp_policy"],
+    required: ["android.hardware.media.c2@1.2-default-seccomp_policy"],
 
     compile_multilib: "both",
     multilib: {
