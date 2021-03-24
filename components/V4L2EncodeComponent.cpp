@@ -619,14 +619,9 @@ bool V4L2EncodeComponent::initializeEncoder() {
 
     mCSDSubmitted = false;
 
-    // Get the requested profile. The codec2 framework doesn't define any profiles for VP8 as VP8
-    // only supports a single profile, so we have to deduce the profile from the MIME type.
-    media::VideoCodecProfile outputProfile;
-    if (strcmp(mInterface->getOutputMediaType(), MEDIA_MIMETYPE_VIDEO_VP8) == 0) {
-        outputProfile = media::VideoCodecProfile::VP8PROFILE_ANY;
-    } else {
-        outputProfile = c2ProfileToVideoCodecProfile(mInterface->getOutputProfile());
-    }
+    // Get the requested profile and level.
+    media::VideoCodecProfile outputProfile =
+            c2ProfileToVideoCodecProfile(mInterface->getOutputProfile());
 
     std::optional<uint8_t> h264Level;
     if (outputProfile >= media::H264PROFILE_MIN && outputProfile <= media::H264PROFILE_MAX) {
