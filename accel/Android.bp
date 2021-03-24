@@ -14,7 +14,6 @@ cc_library {
     srcs: [
         "color_plane_layout.cc",
         "fourcc.cc",
-        "video_frame.cc",
         "video_frame_layout.cc",
         "video_pixel_format.cc",
     ],

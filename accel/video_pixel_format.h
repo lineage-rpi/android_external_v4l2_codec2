@@ -9,6 +9,8 @@
 
 #include <string>
 
+#include "ui/Size.h"
+
 namespace media {
 
 // Pixel formats roughly based on FOURCC labels, see:
@@ -89,6 +91,38 @@ std::string FourccToString(uint32_t fourcc);
 
 // Returns the number of significant bits per channel.
 size_t BitDepth(VideoPixelFormat format);
+
+// Returns the number of planes for the |format|.
+size_t NumPlanes(VideoPixelFormat format);
+
+// Returns the required allocation size for a (tightly packed) frame of the
+// given coded size and format.
+size_t AllocationSize(VideoPixelFormat format, const android::ui::Size& coded_size);
+
+// Returns the plane Size (in bytes) for a plane of the given coded size
+// and format.
+android::ui::Size PlaneSize(VideoPixelFormat format,
+                       size_t plane,
+                       const android::ui::Size& coded_size);
+
+// Returns horizontal bits per pixel for given |plane| and |format|.
+int PlaneHorizontalBitsPerPixel(VideoPixelFormat format, size_t plane);
+
+// Returns bits per pixel for given |plane| and |format|.
+int PlaneBitsPerPixel(VideoPixelFormat format, size_t plane);
+
+// Returns the number of bytes per element for given |plane| and |format|.
+int BytesPerElement(VideoPixelFormat format, size_t plane);
+
+// Returns true if |plane| is a valid plane index for the given |format|.
+bool IsValidPlane(size_t plane, VideoPixelFormat format);
+
+// Returns true if |plane| is a valid plane index for the given |format|.
+bool IsValidPlane(VideoPixelFormat format, size_t plane);
+
+// Returns the pixel size of each subsample for a given |plane| and |format|.
+// E.g. 2x2 for the U-plane in PIXEL_FORMAT_I420.
+android::ui::Size SampleSize(VideoPixelFormat format, size_t plane);
 
 }  // namespace media
 
