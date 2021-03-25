@@ -184,7 +184,7 @@ void V4L2Encoder::requestKeyframe() {
 }
 
 media::VideoPixelFormat V4L2Encoder::inputFormat() const {
-    return mInputLayout ? mInputLayout.value().format()
+    return mInputLayout ? mInputLayout.value().mFormat
                         : media::VideoPixelFormat::PIXEL_FORMAT_UNKNOWN;
 }
 
@@ -471,10 +471,10 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     }
 
     mInputLayout = layout.value();
-    if (!contains(Rect(mInputLayout->coded_size().width, mInputLayout->coded_size().height),
+    if (!contains(Rect(mInputLayout->mCodedSize.width, mInputLayout->mCodedSize.height),
                   Rect(mVisibleSize.width, mVisibleSize.height))) {
         ALOGE("Input size %s exceeds encoder capability, encoder can handle %s",
-              toString(mVisibleSize).c_str(), toString(mInputLayout->coded_size()).c_str());
+              toString(mVisibleSize).c_str(), toString(mInputLayout->mCodedSize).c_str());
         return false;
     }
 
@@ -534,7 +534,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     }
 
     ALOGV("Input format set to %s (size: %s, adjusted size: %dx%d, coded size: %s)",
-          media::VideoPixelFormatToString(mInputLayout->format()).c_str(),
+          media::VideoPixelFormatToString(mInputLayout->mFormat).c_str(),
           toString(mVisibleSize).c_str(), visibleRectangle.width(), visibleRectangle.height(),
           toString(mInputCodedSize).c_str());
 
@@ -700,8 +700,8 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
     ALOG_ASSERT(mInputQueue->freeBuffersCount() > 0);
     ALOG_ASSERT(mState == State::ENCODING);
     ALOG_ASSERT(frame);
-    ALOG_ASSERT(mInputLayout->format() == frame->pixelFormat());
-    ALOG_ASSERT(mInputLayout->planes().size() == frame->planes().size());
+    ALOG_ASSERT(mInputLayout->mFormat == frame->pixelFormat());
+    ALOG_ASSERT(mInputLayout->mPlanes.size() == frame->planes().size());
 
     auto format = frame->pixelFormat();
     auto planes = frame->planes();
@@ -727,10 +727,10 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
         // buffer should be sum of each color planes' size.
         size_t bytesUsed = 0;
         if (planes.size() == 1) {
-            bytesUsed = media::AllocationSize(format, mInputLayout->coded_size());
+            bytesUsed = media::AllocationSize(format, mInputLayout->mCodedSize);
         } else {
             bytesUsed = ::base::checked_cast<size_t>(
-                    getArea(media::PlaneSize(format, i, mInputLayout->coded_size())).value());
+                    getArea(media::PlaneSize(format, i, mInputLayout->mCodedSize)).value());
         }
 
         // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined
@@ -739,7 +739,7 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
         buffer->setPlaneDataOffset(i, planes[i].mOffset);
         bytesUsed += planes[i].mOffset;
         // Workaround: filling length should not be needed. This is a bug of videobuf2 library.
-        buffer->setPlaneSize(i, mInputLayout->planes()[i].size + planes[i].mOffset);
+        buffer->setPlaneSize(i, mInputLayout->mPlanes[i].mSize + planes[i].mOffset);
         buffer->setPlaneBytesUsed(i, bytesUsed);
     }
 

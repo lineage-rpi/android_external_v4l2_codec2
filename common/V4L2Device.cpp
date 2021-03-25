@@ -32,9 +32,6 @@
 #include <base/thread_annotations.h>
 #include <utils/Log.h>
 
-#include <color_plane_layout.h>
-#include <v4l2_codec2/common/Common.h>
-#include <v4l2_codec2/common/VideoTypes.h>
 #include <video_pixel_format.h>
 
 // VP8 parsed frames
@@ -1615,7 +1612,7 @@ std::string V4L2Device::v4L2BufferToString(const struct v4l2_buffer& buffer) {
 }
 
 // static
-std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
+std::optional<VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
         const struct v4l2_format& format) {
     if (!V4L2_TYPE_IS_MULTIPLANAR(format.type)) {
         ALOGE("v4l2_buf_type is not multiplanar: 0x%" PRIx32, format.type);
@@ -1643,24 +1640,24 @@ std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
         return std::nullopt;
     }
     // Reserve capacity in advance to prevent unnecessary vector reallocation.
-    std::vector<media::ColorPlaneLayout> planes;
+    std::vector<VideoFramePlane> planes;
     planes.reserve(numColorPlanes);
     for (size_t i = 0; i < numBuffers; ++i) {
         const v4l2_plane_pix_format& planeFormat = pixMp.plane_fmt[i];
-        planes.emplace_back(static_cast<int32_t>(planeFormat.bytesperline), 0u,
-                            planeFormat.sizeimage);
+        planes.push_back(VideoFramePlane{planeFormat.bytesperline, 0u, planeFormat.sizeimage});
     }
     // For the case that #color planes > #buffers, it fills stride of color plane which does not map
     // to buffer. Right now only some pixel formats are supported: NV12, YUV420, YVU420.
     if (numColorPlanes > numBuffers) {
-        const int32_t yStride = planes[0].stride;
+        const uint32_t yStride = planes[0].mStride;
         // Note that y_stride is from v4l2 bytesperline and its type is uint32_t. It is safe to cast
         // to size_t.
         const size_t yStrideAbs = static_cast<size_t>(yStride);
         switch (pixFmt) {
         case V4L2_PIX_FMT_NV12:
             // The stride of UV is the same as Y in NV12. The height is half of Y plane.
-            planes.emplace_back(yStride, yStrideAbs * pixMp.height, yStrideAbs * pixMp.height / 2);
+            planes.push_back(VideoFramePlane{yStride, yStrideAbs * pixMp.height,
+                                             yStrideAbs * pixMp.height / 2});
             ALOG_ASSERT(2u == planes.size());
             break;
         case V4L2_PIX_FMT_YUV420:
@@ -1668,15 +1665,15 @@ std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
             // The spec claims that two Cx rows (including padding) is exactly as long as one Y row
             // (including padding). So stride of Y must be even number.
             if (yStride % 2 != 0 || pixMp.height % 2 != 0) {
-                ALOGE("Plane-Y stride and height should be even; stride: %i, height: %u", yStride,
+                ALOGE("Plane-Y stride and height should be even; stride: %u, height: %u", yStride,
                       pixMp.height);
                 return std::nullopt;
             }
-            const int32_t halfStride = yStride / 2;
+            const uint32_t halfStride = yStride / 2;
             const size_t plane0Area = yStrideAbs * pixMp.height;
             const size_t plane1Area = plane0Area / 4;
-            planes.emplace_back(halfStride, plane0Area, plane1Area);
-            planes.emplace_back(halfStride, plane0Area + plane1Area, plane1Area);
+            planes.push_back(VideoFramePlane{halfStride, plane0Area, plane1Area});
+            planes.push_back(VideoFramePlane{halfStride, plane0Area + plane1Area, plane1Area});
             ALOG_ASSERT(3u == planes.size());
             break;
         }
@@ -1687,18 +1684,8 @@ std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
         }
     }
 
-    // Some V4L2 devices expect buffers to be page-aligned. We cannot detect such devices
-    // individually, so set this as a video frame layout property.
-    constexpr size_t bufferAlignment = 0x1000;
-    if (numBuffers == 1) {
-        return media::VideoFrameLayout::CreateWithPlanes(videoFormat,
-                                                         ui::Size(pixMp.width, pixMp.height),
-                                                         std::move(planes), bufferAlignment);
-    } else {
-        return media::VideoFrameLayout::CreateMultiPlanar(videoFormat,
-                                                          ui::Size(pixMp.width, pixMp.height),
-                                                          std::move(planes), bufferAlignment);
-    }
+    return VideoFrameLayout{videoFormat, ui::Size(pixMp.width, pixMp.height), std::move(planes),
+                            (numBuffers > 1)};
 }
 
 // static
