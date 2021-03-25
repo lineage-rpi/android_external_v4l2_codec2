@@ -49,7 +49,6 @@ cc_library {
         "libui",
     ],
     static_libs: [
-        "libv4l2_codec2_accel",
         "libv4l2_codec2_common",
     ],
 
