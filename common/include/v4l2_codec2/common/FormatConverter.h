@@ -51,7 +51,7 @@ public:
 
     // Create FormatConverter instance and initialize it, nullptr will be returned on
     // initialization error.
-    static std::unique_ptr<FormatConverter> Create(media::VideoPixelFormat outFormat,
+    static std::unique_ptr<FormatConverter> Create(VideoPixelFormat outFormat,
                                                    const ui::Size& visibleSize, uint32_t inputCount,
                                                    const ui::Size& codedSize);
 
@@ -93,7 +93,7 @@ private:
 
     // Initialize foramt converter. It will pre-allocate a set of graphic blocks as |codedSize| and
     // |outFormat|. This function should be called prior to other functions.
-    c2_status_t initialize(media::VideoPixelFormat outFormat, const ui::Size& visibleSize,
+    c2_status_t initialize(VideoPixelFormat outFormat, const ui::Size& visibleSize,
                            uint32_t inputCount, const ui::Size& codedSize);
 
     // The array of block entries.
@@ -106,7 +106,7 @@ private:
     std::unique_ptr<uint8_t[]> mTempPlaneU;
     std::unique_ptr<uint8_t[]> mTempPlaneV;
 
-    media::VideoPixelFormat mOutFormat = media::VideoPixelFormat::PIXEL_FORMAT_UNKNOWN;
+    VideoPixelFormat mOutFormat = VideoPixelFormat::UNKNOWN;
     ui::Size mVisibleSize;
 };
 

@@ -47,7 +47,7 @@ public:
     bool setFramerate(uint32_t framerate) override;
     void requestKeyframe() override;
 
-    media::VideoPixelFormat inputFormat() const override;
+    VideoPixelFormat inputFormat() const override;
     const ui::Size& visibleSize() const override { return mVisibleSize; }
     const ui::Size& codedSize() const override { return mInputCodedSize; }
 
@@ -92,7 +92,7 @@ private:
     void onDrainDone(bool done);
 
     // Configure input format on the V4L2 device.
-    bool configureInputFormat(media::VideoPixelFormat inputFormat, uint32_t stride);
+    bool configureInputFormat(VideoPixelFormat inputFormat, uint32_t stride);
     // Configure output format on the V4L2 device.
     bool configureOutputFormat(C2Config::profile_t outputProfile);
     // Configure required and optional controls on the V4L2 device.

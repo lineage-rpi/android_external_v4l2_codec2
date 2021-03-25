@@ -7,7 +7,7 @@
 namespace android {
 
 VideoEncoder::InputFrame::InputFrame(std::vector<int>&& fds, std::vector<VideoFramePlane>&& planes,
-                                     media::VideoPixelFormat pixelFormat, uint64_t index,
+                                     VideoPixelFormat pixelFormat, uint64_t index,
                                      int64_t timestamp)
       : mFds(std::move(fds)),
         mPlanes(std::move(planes)),

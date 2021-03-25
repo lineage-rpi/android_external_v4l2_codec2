@@ -27,7 +27,7 @@ struct VideoEncoderAcceleratorConfig {
         DMABUF = 1,
     };
 
-    media::VideoPixelFormat mInputFormat;
+    VideoPixelFormat mInputFormat;
     ui::Size mInputVisibleSize;
     C2Config::profile_t mOutputProfile;
     uint32_t mInitialBitrate;
