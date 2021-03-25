@@ -18,6 +18,7 @@
 
 #include <C2AllocatorGralloc.h>
 #include <C2BlockInternal.h>
+#include <C2SurfaceSyncObj.h>
 #include <android/hardware/graphics/bufferqueue/2.0/IProducerListener.h>
 #include <base/callback.h>
 #include <log/log.h>
@@ -244,10 +245,12 @@ public:
 
             unique_id_t uniqueId;
             sp<GraphicBuffer> slotBuffer;
+            std::shared_ptr<C2SurfaceSyncMemory> syncMem;
             std::tie(uniqueId, slotBuffer) = getSlotBuffer(oldSlot);
             slot_t newSlot = poolData->migrate(producer->getBase(), mGenerationToBeMigrated,
                                                mUsageToBeMigrated, producerId, slotBuffer,
-                                               slotBuffer->getGenerationNumber());
+                                               slotBuffer->getGenerationNumber(),
+                                               syncMem);
             if (newSlot < 0) {
                 ALOGW("%s() Failed to migrate local buffer: uniqueId=%u, oldSlot=%d", __func__,
                       uniqueId, oldSlot);
@@ -604,10 +607,12 @@ c2_status_t C2VdaBqBlockPool::Impl::fetchGraphicBlock(
         }
     }
 
+    std::shared_ptr<C2SurfaceSyncMemory> syncMem;
     std::shared_ptr<C2GraphicAllocation> allocation =
             mTrackedGraphicBuffers.getRegisteredAllocation(uniqueId);
     auto poolData = std::make_shared<C2BufferQueueBlockPoolData>(
-            slotBuffer->getGenerationNumber(), mProducerId, slot, mProducer->getBase());
+            slotBuffer->getGenerationNumber(), mProducerId, slot,
+            mProducer->getBase(), syncMem, 0);
     mTrackedGraphicBuffers.updatePoolData(slot, poolData);
     *block = _C2BlockFactory::CreateGraphicBlock(std::move(allocation), std::move(poolData));
     if (*block == nullptr) {
