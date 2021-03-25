@@ -230,7 +230,7 @@ V4L2DecodeInterface::V4L2DecodeInterface(const std::string& name,
 
     bool secureMode = name.find(".secure") != std::string::npos;
     const C2Allocator::id_t inputAllocators[] = {secureMode ? V4L2AllocatorId::SECURE_LINEAR
-                                                            : C2PlatformAllocatorStore::BLOB};
+                                                            : C2AllocatorStore::DEFAULT_LINEAR};
 
     const C2Allocator::id_t outputAllocators[] = {V4L2AllocatorId::V4L2_BUFFERPOOL};
     const C2Allocator::id_t surfaceAllocator =
