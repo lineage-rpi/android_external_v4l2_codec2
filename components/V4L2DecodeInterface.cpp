@@ -122,6 +122,10 @@ V4L2DecodeInterface::V4L2DecodeInterface(const std::string& name,
         return;
     }
 
+    addParameter(DefineParam(mKind, C2_PARAMKEY_COMPONENT_KIND)
+                         .withConstValue(new C2ComponentKindSetting(C2Component::KIND_DECODER))
+                         .build());
+
     std::string inputMime;
     switch (*mVideoCodec) {
     case VideoCodec::H264:
