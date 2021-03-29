@@ -2,15 +2,15 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#ifndef ANDROID_V4L2_CODEC2_STORE_V4L2_COMPONENT_STORE_H
-#define ANDROID_V4L2_CODEC2_STORE_V4L2_COMPONENT_STORE_H
+#ifndef ANDROID_V4L2_CODEC2_COMPONENTS_V4L2_COMPONENT_STORE_H
+#define ANDROID_V4L2_CODEC2_COMPONENTS_V4L2_COMPONENT_STORE_H
 
 #include <map>
 #include <mutex>
 
-#include <android-base/thread_annotations.h>
 #include <C2Component.h>
 #include <C2ComponentFactory.h>
+#include <android-base/thread_annotations.h>
 #include <util/C2InterfaceHelper.h>
 
 namespace android {
@@ -41,27 +41,21 @@ public:
             std::vector<C2FieldSupportedValuesQuery>& fields) const override;
 
 private:
-    using CreateV4L2FactoryFunc = ::C2ComponentFactory* (*)(const char* /* componentName */);
-    using DestroyV4L2FactoryFunc = void (*)(::C2ComponentFactory*);
-
-    V4L2ComponentStore(void* libHandle, CreateV4L2FactoryFunc createFactoryFunc,
-                       DestroyV4L2FactoryFunc destroyFactoryFunc);
+    V4L2ComponentStore();
 
     ::C2ComponentFactory* GetFactory(const C2String& name);
     std::shared_ptr<const C2Component::Traits> GetTraits(const C2String& name);
 
-    void* mLibHandle;
-    CreateV4L2FactoryFunc mCreateFactoryFunc;
-    DestroyV4L2FactoryFunc mDestroyFactoryFunc;
-
     std::shared_ptr<C2ReflectorHelper> mReflector;
 
     std::mutex mCachedFactoriesLock;
-    std::map<C2String, ::C2ComponentFactory*> mCachedFactories GUARDED_BY(mCachedFactoriesLock);
+    std::map<C2String, std::unique_ptr<::C2ComponentFactory>> mCachedFactories
+            GUARDED_BY(mCachedFactoriesLock);
     std::mutex mCachedTraitsLock;
-    std::map<C2String, std::shared_ptr<const C2Component::Traits>> mCachedTraits GUARDED_BY(mCachedTraitsLock);
+    std::map<C2String, std::shared_ptr<const C2Component::Traits>> mCachedTraits
+            GUARDED_BY(mCachedTraitsLock);
 };
 
 }  // namespace android
 
-#endif  // ANDROID_V4L2_CODEC2_STORE_V4L2_COMPONENT_STORE_H
+#endif  // ANDROID_V4L2_CODEC2_COMPONENTS_V4L2_COMPONENT_STORE_H
