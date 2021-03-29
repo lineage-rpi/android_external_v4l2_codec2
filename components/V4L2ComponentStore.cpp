@@ -5,9 +5,8 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "V4L2ComponentStore"
 
-#include <v4l2_codec2/store/V4L2ComponentStore.h>
+#include <v4l2_codec2/components/V4L2ComponentStore.h>
 
-#include <dlfcn.h>
 #include <stdint.h>
 
 #include <memory>
@@ -19,13 +18,10 @@
 #include <media/stagefright/foundation/MediaDefs.h>
 
 #include <v4l2_codec2/common/V4L2ComponentCommon.h>
+#include <v4l2_codec2/components/V4L2ComponentFactory.h>
 
 namespace android {
 namespace {
-const char* kLibPath = "libv4l2_codec2_components.so";
-const char* kCreateFactoryFuncName = "CreateCodec2Factory";
-const char* kDestroyFactoryFuncName = "DestroyCodec2Factory";
-
 const uint32_t kComponentRank = 0x80;
 
 std::string getMediaTypeFromComponentName(const std::string& name) {
@@ -57,32 +53,12 @@ std::shared_ptr<C2ComponentStore> V4L2ComponentStore::Create() {
     std::shared_ptr<C2ComponentStore> store = platformStore.lock();
     if (store != nullptr) return store;
 
-    void* libHandle = dlopen(kLibPath, RTLD_NOW | RTLD_NODELETE);
-    if (!libHandle) {
-        ALOGE("Failed to load library: %s", kLibPath);
-        return nullptr;
-    }
-
-    auto createFactoryFunc = (CreateV4L2FactoryFunc)dlsym(libHandle, kCreateFactoryFuncName);
-    auto destroyFactoryFunc = (DestroyV4L2FactoryFunc)dlsym(libHandle, kDestroyFactoryFuncName);
-    if (!createFactoryFunc || !destroyFactoryFunc) {
-        ALOGE("Failed to load functions: %s, %s", kCreateFactoryFuncName, kDestroyFactoryFuncName);
-        dlclose(libHandle);
-        return nullptr;
-    }
-
-    store = std::shared_ptr<C2ComponentStore>(
-            new V4L2ComponentStore(libHandle, createFactoryFunc, destroyFactoryFunc));
+    store = std::shared_ptr<C2ComponentStore>(new V4L2ComponentStore());
     platformStore = store;
     return store;
 }
 
-V4L2ComponentStore::V4L2ComponentStore(void* libHandle, CreateV4L2FactoryFunc createFactoryFunc,
-                                       DestroyV4L2FactoryFunc destroyFactoryFunc)
-      : mLibHandle(libHandle),
-        mCreateFactoryFunc(createFactoryFunc),
-        mDestroyFactoryFunc(destroyFactoryFunc),
-        mReflector(std::make_shared<C2ReflectorHelper>()) {
+V4L2ComponentStore::V4L2ComponentStore() : mReflector(std::make_shared<C2ReflectorHelper>()) {
     ALOGV("%s()", __func__);
 }
 
@@ -90,10 +66,7 @@ V4L2ComponentStore::~V4L2ComponentStore() {
     ALOGV("%s()", __func__);
 
     std::lock_guard<std::mutex> lock(mCachedFactoriesLock);
-    for (const auto& kv : mCachedFactories) mDestroyFactoryFunc(kv.second);
     mCachedFactories.clear();
-
-    dlclose(mLibHandle);
 }
 
 C2String V4L2ComponentStore::getName() const {
@@ -189,16 +162,18 @@ c2_status_t V4L2ComponentStore::querySupportedValues_sm(
 
     std::lock_guard<std::mutex> lock(mCachedFactoriesLock);
     const auto it = mCachedFactories.find(name);
-    if (it != mCachedFactories.end()) return it->second;
+    if (it != mCachedFactories.end()) return it->second.get();
 
-    ::C2ComponentFactory* factory = mCreateFactoryFunc(name.c_str());
+    std::unique_ptr<::C2ComponentFactory> factory = V4L2ComponentFactory::create(
+            name, std::static_pointer_cast<C2ReflectorHelper>(getParamReflector()));
     if (factory == nullptr) {
         ALOGE("Failed to create factory for %s", name.c_str());
         return nullptr;
     }
 
-    mCachedFactories.emplace(name, factory);
-    return factory;
+    auto ret = factory.get();
+    mCachedFactories.emplace(name, std::move(factory));
+    return ret;
 }
 
 std::shared_ptr<const C2Component::Traits> V4L2ComponentStore::GetTraits(const C2String& name) {
