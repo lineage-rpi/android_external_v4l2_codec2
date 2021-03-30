@@ -440,9 +440,6 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   enum class Type {
     kDecoder,
     kEncoder,
-    kImageProcessor,
-    kJpegDecoder,
-    kJpegEncoder,
   };
 
   // Create and initialize an appropriate V4L2Device instance for the current
@@ -513,11 +510,6 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 
   std::vector<uint32_t> EnumerateSupportedPixelformats(v4l2_buf_type buf_type);
 
-  // Return V4L2 pixelformats supported by the available image processor
-  // devices for |buf_type|.
-  std::vector<uint32_t> GetSupportedImageProcessorPixelformats(
-      v4l2_buf_type buf_type);
-
   // Return supported profiles for decoder, including only profiles for given
   // fourcc |pixelformats|.
   VideoDecodeAccelerator::SupportedProfiles GetSupportedDecodeProfiles(
@@ -527,13 +519,6 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   // Return supported profiles for encoder.
   VideoEncodeAccelerator::SupportedProfiles
   GetSupportedEncodeProfiles();
-
-  // Return true if image processing is supported, false otherwise.
-  bool IsImageProcessingSupported();
-
-  // Return true if JPEG codec is supported, false otherwise.
-  bool IsJpegDecodingSupported();
-  bool IsJpegEncodingSupported();
 
   // Start polling on this V4L2Device. |event_callback| will be posted to
   // the caller's sequence if a buffer is ready to be dequeued and/or a V4L2
