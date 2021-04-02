@@ -50,6 +50,8 @@ private:
                                         const C2P<C2StreamColorAspectsTuning::output>& def,
                                         const C2P<C2StreamColorAspectsInfo::input>& coded);
 
+    // The kind of the component; should be C2Component::KIND_DECODER.
+    std::shared_ptr<C2ComponentKindSetting> mKind;
     // The input format kind; should be C2FormatCompressed.
     std::shared_ptr<C2StreamBufferTypeSetting::input> mInputFormat;
     // The memory usage flag of input buffer; should be BufferUsage::VIDEO_DECODER.

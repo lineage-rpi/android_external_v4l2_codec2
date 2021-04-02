@@ -63,6 +63,8 @@ protected:
 
     // Constant parameters
 
+    // The kind of the component; should be C2Component::KIND_ENCODER.
+    std::shared_ptr<C2ComponentKindSetting> mKind;
     // The input format kind; should be C2FormatVideo.
     std::shared_ptr<C2StreamBufferTypeSetting::input> mInputFormat;
     // The memory usage flag of input buffer; should be BufferUsage::VIDEO_ENCODER.

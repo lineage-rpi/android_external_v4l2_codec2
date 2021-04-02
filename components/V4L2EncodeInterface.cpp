@@ -343,6 +343,10 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
     //               parameters. Please make sure the dependent parameters are added prior to the
     //               one needs the setter dependency.
 
+    addParameter(DefineParam(mKind, C2_PARAMKEY_COMPONENT_KIND)
+                         .withConstValue(new C2ComponentKindSetting(C2Component::KIND_ENCODER))
+                         .build());
+
     addParameter(DefineParam(mInputVisibleSize, C2_PARAMKEY_PICTURE_SIZE)
                          .withDefault(new C2StreamPictureSizeInfo::input(0u, 320, 240))
                          .withFields({
