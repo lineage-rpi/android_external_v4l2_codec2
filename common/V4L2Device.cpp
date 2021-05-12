@@ -1245,10 +1245,10 @@ uint32_t V4L2Device::videoCodecProfileToV4L2PixFmt(media::VideoCodecProfile prof
 }
 
 // static
-media::VideoCodecProfile V4L2Device::v4L2ProfileToVideoCodecProfile(media::VideoCodec codec,
+media::VideoCodecProfile V4L2Device::v4L2ProfileToVideoCodecProfile(VideoCodec codec,
                                                                     uint32_t profile) {
     switch (codec) {
-    case media::kCodecH264:
+    case VideoCodec::H264:
         switch (profile) {
         case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
         case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE:
@@ -1261,7 +1261,7 @@ media::VideoCodecProfile V4L2Device::v4L2ProfileToVideoCodecProfile(media::Video
             return media::H264PROFILE_HIGH;
         }
         break;
-    case media::kCodecVP8:
+    case VideoCodec::VP8:
         switch (profile) {
         case V4L2_MPEG_VIDEO_VP8_PROFILE_0:
         case V4L2_MPEG_VIDEO_VP8_PROFILE_1:
@@ -1270,7 +1270,7 @@ media::VideoCodecProfile V4L2Device::v4L2ProfileToVideoCodecProfile(media::Video
             return media::VP8PROFILE_ANY;
         }
         break;
-    case media::kCodecVP9:
+    case VideoCodec::VP9:
         switch (profile) {
         case V4L2_MPEG_VIDEO_VP9_PROFILE_0:
             return media::VP9PROFILE_PROFILE0;
@@ -1291,17 +1291,17 @@ media::VideoCodecProfile V4L2Device::v4L2ProfileToVideoCodecProfile(media::Video
 
 std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles(
         uint32_t pixFmt, bool /*isEncoder*/) {
-    auto getSupportedProfiles = [this](media::VideoCodec codec,
+    auto getSupportedProfiles = [this](VideoCodec codec,
                                        std::vector<media::VideoCodecProfile>* profiles) {
         uint32_t queryId = 0;
         switch (codec) {
-        case media::kCodecH264:
+        case VideoCodec::H264:
             queryId = V4L2_CID_MPEG_VIDEO_H264_PROFILE;
             break;
-        case media::kCodecVP8:
+        case VideoCodec::VP8:
             queryId = V4L2_CID_MPEG_VIDEO_VP8_PROFILE;
             break;
-        case media::kCodecVP9:
+        case VideoCodec::VP9:
             queryId = V4L2_CID_MPEG_VIDEO_VP9_PROFILE;
             break;
         default:
@@ -1330,7 +1330,7 @@ std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles
     switch (pixFmt) {
     case V4L2_PIX_FMT_H264:
     case V4L2_PIX_FMT_H264_SLICE:
-        if (!getSupportedProfiles(media::kCodecH264, &profiles)) {
+        if (!getSupportedProfiles(VideoCodec::H264, &profiles)) {
             ALOGW("Driver doesn't support QUERY H264 profiles, "
                   "use default values, Base, Main, High");
             profiles = {
@@ -1346,7 +1346,7 @@ std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles
         break;
     case V4L2_PIX_FMT_VP9:
     case V4L2_PIX_FMT_VP9_FRAME:
-        if (!getSupportedProfiles(media::kCodecVP9, &profiles)) {
+        if (!getSupportedProfiles(VideoCodec::VP9, &profiles)) {
             ALOGW("Driver doesn't support QUERY VP9 profiles, "
                   "use default values, Profile0");
             profiles = {media::VP9PROFILE_PROFILE0};
