@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 // Note: ported from Chromium commit head: 8c9190713ed9
 
-#include "generic_v4l2_device.h"
+#include "v4l2_codec2/common/GenericV4L2Device.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -254,7 +254,7 @@ bool GenericV4L2Device::IsJpegEncodingSupported() {
   return !devices.empty();
 }
 
-bool GenericV4L2Device::OpenDevicePath(const std::string& path, Type type) {
+bool GenericV4L2Device::OpenDevicePath(const std::string& path, Type /*type*/) {
   DCHECK(!device_fd_.is_valid());
 
   device_fd_.reset(

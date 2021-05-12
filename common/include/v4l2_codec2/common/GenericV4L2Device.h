@@ -19,7 +19,7 @@
 
 #include "base/files/scoped_file.h"
 #include "base/macros.h"
-#include "v4l2_device.h"
+#include "v4l2_codec2/common/V4L2Device.h"
 
 namespace media {
 

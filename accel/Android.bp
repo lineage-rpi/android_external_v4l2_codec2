@@ -14,9 +14,6 @@ cc_library {
     srcs: [
         "color_plane_layout.cc",
         "fourcc.cc",
-        "generic_v4l2_device.cc",
-        "v4l2_device.cc",
-        "v4l2_device_poller.cc",
         "video_codecs.cc",
         "video_decode_accelerator.cc",
         "video_encode_accelerator.cc",
