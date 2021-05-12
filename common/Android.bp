@@ -39,7 +39,6 @@ cc_library {
         "libstagefright_foundation",
         "libui",
         "libutils",
-        "libv4l2_codec2_accel"
     ],
 
     static_libs: [
