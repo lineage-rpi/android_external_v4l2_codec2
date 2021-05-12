@@ -24,7 +24,7 @@
 #include <log/log.h>
 #include <media/stagefright/foundation/ColorUtils.h>
 
-#include <h264_parser.h>
+#include <v4l2_codec2/common/NalParser.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
 #include <v4l2_codec2/components/V4L2Decoder.h>
@@ -42,44 +42,23 @@ int32_t frameIndexToBitstreamId(c2_cntr64_t frameIndex) {
 bool parseCodedColorAspects(const C2ConstLinearBlock& input,
                             C2StreamColorAspectsInfo::input* codedAspects) {
     C2ReadView view = input.map().get();
-    const uint8_t* data = view.data();
-    const uint32_t size = view.capacity();
+    NalParser parser(view.data(), view.capacity());
 
-    std::unique_ptr<media::H264Parser> h264Parser = std::make_unique<media::H264Parser>();
-    h264Parser->SetStream(data, static_cast<off_t>(size));
-    media::H264NALU nalu;
-    media::H264Parser::Result parRes = h264Parser->AdvanceToNextNALU(&nalu);
-    if (parRes != media::H264Parser::kEOStream && parRes != media::H264Parser::kOk) {
-        ALOGE("H264 AdvanceToNextNALU error: %d", static_cast<int>(parRes));
-        return false;
-    }
-    if (nalu.nal_unit_type != media::H264NALU::kSPS) {
-        ALOGV("NALU is not SPS");
+    if (!parser.locateSPS()) {
+        ALOGV("Couldn't find SPS");
         return false;
     }
 
-    int spsId;
-    parRes = h264Parser->ParseSPS(&spsId);
-    if (parRes != media::H264Parser::kEOStream && parRes != media::H264Parser::kOk) {
-        ALOGE("H264 ParseSPS error: %d", static_cast<int>(parRes));
+    NalParser::ColorAspects aspects;
+    if (!parser.findCodedColorAspects(&aspects)) {
+        ALOGV("Couldn't find color description in SPS");
         return false;
     }
-
-    // Parse ISO color aspects from H264 SPS bitstream.
-    const media::H264SPS* sps = h264Parser->GetSPS(spsId);
-    if (!sps->colour_description_present_flag) {
-        ALOGV("No Color Description in SPS");
-        return false;
-    }
-    int32_t primaries = sps->colour_primaries;
-    int32_t transfer = sps->transfer_characteristics;
-    int32_t coeffs = sps->matrix_coefficients;
-    bool fullRange = sps->video_full_range_flag;
 
     // Convert ISO color aspects to ColorUtils::ColorAspects.
     ColorAspects colorAspects;
-    ColorUtils::convertIsoColorAspectsToCodecAspects(primaries, transfer, coeffs, fullRange,
-                                                     colorAspects);
+    ColorUtils::convertIsoColorAspectsToCodecAspects(
+            aspects.primaries, aspects.transfer, aspects.coeffs, aspects.fullRange, colorAspects);
     ALOGV("Parsed ColorAspects from bitstream: (R:%d, P:%d, M:%d, T:%d)", colorAspects.mRange,
           colorAspects.mPrimaries, colorAspects.mMatrixCoeffs, colorAspects.mTransfer);
 
