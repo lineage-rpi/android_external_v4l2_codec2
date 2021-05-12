@@ -27,7 +27,7 @@ struct VideoFramePlane {
 
 // A video frame's layout, containing pixel format, size and layout of individual planes.
 struct VideoFrameLayout {
-    media::VideoPixelFormat mFormat = media::PIXEL_FORMAT_UNKNOWN;
+    VideoPixelFormat mFormat = VideoPixelFormat::UNKNOWN;
     android::ui::Size mCodedSize;
     std::vector<VideoFramePlane> mPlanes;
     bool mMultiPlanar = false;
