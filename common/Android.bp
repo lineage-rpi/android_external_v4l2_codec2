@@ -19,6 +19,7 @@ cc_library {
         "Common.cpp",
         "EncodeHelpers.cpp",
         "FormatConverter.cpp",
+        "Fourcc.cpp",
         "NalParser.cpp",
         "V4L2ComponentCommon.cpp",
         "VideoTypes.cpp",

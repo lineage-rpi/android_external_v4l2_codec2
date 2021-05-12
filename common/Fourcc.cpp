@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 // Note: ported from Chromium commit head: 27c98933749f
 
-#include "fourcc.h"
+#include <v4l2_codec2/common/Fourcc.h>
 
 #include <linux/videodev2.h>
 
