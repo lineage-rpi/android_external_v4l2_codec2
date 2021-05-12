@@ -27,10 +27,10 @@
 #include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/EncodeHelpers.h>
 #include <v4l2_codec2/common/FormatConverter.h>
+#include <v4l2_codec2/common/VideoPixelFormat.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
 #include <v4l2_codec2/components/V4L2EncodeInterface.h>
 #include <v4l2_codec2/components/V4L2Encoder.h>
-#include <video_pixel_format.h>
 
 using android::hardware::graphics::common::V1_0::BufferUsage;
 

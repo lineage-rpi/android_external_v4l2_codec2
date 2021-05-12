@@ -25,6 +25,7 @@ cc_library {
         "VideoTypes.cpp",
         "V4L2Device.cpp",
         "V4L2DevicePoller.cpp",
+        "VideoPixelFormat.cpp",
     ],
 
     export_include_dirs: [
