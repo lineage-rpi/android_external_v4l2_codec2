@@ -11,8 +11,6 @@
 #include "base/stl_util.h"
 #include "base/strings/stringprintf.h"
 
-#include "video_frame_layout.h"
-
 namespace media {
 
 namespace {

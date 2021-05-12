@@ -23,9 +23,9 @@
 
 #include <fourcc.h>
 #include <ui/Size.h>
+#include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
 #include <v4l2_codec2/common/VideoTypes.h>
-#include <video_frame_layout.h>
 #include <video_pixel_format.h>
 
 namespace android {
@@ -364,9 +364,8 @@ public:
     // Composes human readable string of v4l2_buffer.
     static std::string v4L2BufferToString(const struct v4l2_buffer& buffer);
 
-    // Composes VideoFrameLayout based on v4l2_format.
-    // If error occurs, it returns base::nullopt.
-    static std::optional<media::VideoFrameLayout> v4L2FormatToVideoFrameLayout(
+    // Composes VideoFrameLayout based on v4l2_format. If error occurs, it returns base::nullopt.
+    static std::optional<VideoFrameLayout> v4L2FormatToVideoFrameLayout(
             const struct v4l2_format& format);
 
     // Returns number of planes of |pixFmt|.
