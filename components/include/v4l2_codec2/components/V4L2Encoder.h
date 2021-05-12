@@ -102,6 +102,9 @@ private:
     // Configure required and optional controls on the V4L2 device.
     bool configureDevice(media::VideoCodecProfile outputProfile,
                          std::optional<const uint8_t> outputH264Level);
+    // Configure required and optional H.264 controls on the V4L2 device.
+    bool configureH264(media::VideoCodecProfile outputProfile,
+                       std::optional<const uint8_t> outputH264Level);
 
     // Attempt to start the V4L2 device poller.
     bool startDevicePoll();
