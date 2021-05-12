@@ -15,11 +15,11 @@
 
 #include <rect.h>
 #include <size.h>
+#include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/VideoDecoder.h>
 #include <v4l2_codec2/components/VideoFrame.h>
 #include <v4l2_codec2/components/VideoFramePool.h>
-#include <v4l2_device.h>
 
 namespace android {
 

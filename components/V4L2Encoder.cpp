@@ -17,8 +17,8 @@
 #include <log/log.h>
 
 #include <rect.h>
+#include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
-#include <v4l2_device.h>
 
 namespace android {
 

@@ -17,7 +17,7 @@
 #include <utils/Log.h>
 
 #include <v4l2_codec2/common/V4L2ComponentCommon.h>
-#include <v4l2_device.h>
+#include <v4l2_codec2/common/V4L2Device.h>
 #include <video_codecs.h>
 
 using android::hardware::graphics::common::V1_0::BufferUsage;
