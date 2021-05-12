@@ -96,8 +96,6 @@ class VideoFrameLayout {
   VideoFrameLayout& operator=(const VideoFrameLayout&);
   ~VideoFrameLayout();
 
-  static size_t NumPlanes(VideoPixelFormat format);
-
   VideoPixelFormat format() const { return format_; }
   const android::ui::Size& coded_size() const { return coded_size_; }
 
