@@ -641,24 +641,32 @@ bool V4L2DecodeComponent::reportEOSWork() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
-    // In this moment all works prior to EOS work should be done and returned to listener.
-    if (mWorksAtDecoder.size() != 1u) {
-        ALOGE("It shouldn't have remaining works in mWorksAtDecoder except EOS work.");
-        for (const auto& kv : mWorksAtDecoder) {
-            ALOGE("bitstreamId(%d) => Work index=%llu, timestamp=%llu", kv.first,
-                  kv.second->input.ordinal.frameIndex.peekull(),
-                  kv.second->input.ordinal.timestamp.peekull());
-        }
+    const auto it =
+            std::find_if(mWorksAtDecoder.begin(), mWorksAtDecoder.end(), [](const auto& kv) {
+                return kv.second->input.flags & C2FrameData::FLAG_END_OF_STREAM;
+            });
+    if (it == mWorksAtDecoder.end()) {
+        ALOGE("Failed to find EOS work.");
         return false;
     }
 
-    std::unique_ptr<C2Work> eosWork(std::move(mWorksAtDecoder.begin()->second));
-    mWorksAtDecoder.clear();
+    std::unique_ptr<C2Work> eosWork(std::move(it->second));
+    mWorksAtDecoder.erase(it);
 
     eosWork->result = C2_OK;
     eosWork->workletsProcessed = static_cast<uint32_t>(eosWork->worklets.size());
     eosWork->worklets.front()->output.flags = C2FrameData::FLAG_END_OF_STREAM;
     if (!eosWork->input.buffers.empty()) eosWork->input.buffers.front().reset();
+
+    if (!mWorksAtDecoder.empty()) {
+        ALOGW("There are remaining works except EOS work. abandon them.");
+        for (const auto& kv : mWorksAtDecoder) {
+            ALOGW("bitstreamId(%d) => Work index=%llu, timestamp=%llu", kv.first,
+                  kv.second->input.ordinal.frameIndex.peekull(),
+                  kv.second->input.ordinal.timestamp.peekull());
+        }
+        reportAbandonedWorks();
+    }
 
     return reportWork(std::move(eosWork));
 }
