@@ -17,6 +17,7 @@
 #include <log/log.h>
 
 #include <v4l2_codec2/common/Common.h>
+#include <v4l2_codec2/common/Fourcc.h>
 
 namespace android {
 namespace {
@@ -24,6 +25,13 @@ namespace {
 constexpr size_t kNumInputBuffers = 16;
 // Extra buffers for transmitting in the whole video pipeline.
 constexpr size_t kNumExtraOutputBuffers = 4;
+
+// Currently we only support flexible pixel 420 format YCBCR_420_888 in Android.
+// Here is the list of flexible 420 format.
+constexpr std::initializer_list<uint32_t> kSupportedOutputFourccs = {
+        Fourcc::YU12, Fourcc::YV12, Fourcc::YM12, Fourcc::YM21,
+        Fourcc::NV12, Fourcc::NV21, Fourcc::NM12, Fourcc::NM21,
+};
 
 uint32_t VideoCodecToV4L2PixFmt(VideoCodec codec) {
     switch (codec) {
@@ -483,13 +491,22 @@ bool V4L2Decoder::changeResolution() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
-    std::optional<struct v4l2_format> format = getFormatInfo();
+    const std::optional<struct v4l2_format> format = getFormatInfo();
     std::optional<size_t> numOutputBuffers = getNumOutputBuffers();
     if (!format || !numOutputBuffers) {
         return false;
     }
 
-    mCodedSize.set(format->fmt.pix_mp.width, format->fmt.pix_mp.height);
+    const ui::Size codedSize(format->fmt.pix_mp.width, format->fmt.pix_mp.height);
+    if (!setupOutputFormat(codedSize)) {
+        return false;
+    }
+
+    const std::optional<struct v4l2_format> adjustedFormat = getFormatInfo();
+    if (!adjustedFormat) {
+        return false;
+    }
+    mCodedSize.set(adjustedFormat->fmt.pix_mp.width, adjustedFormat->fmt.pix_mp.height);
     mVisibleRect = getVisibleRect(mCodedSize);
 
     ALOGI("Need %zu output buffers. coded size: %s, visible rect: %s", *numOutputBuffers,
@@ -516,7 +533,7 @@ bool V4L2Decoder::changeResolution() {
     // Release the previous VideoFramePool before getting a new one to guarantee only one pool
     // exists at the same time.
     mVideoFramePool.reset();
-    // Always use fexible pixel 420 format YCBCR_420_888 in Android.
+    // Always use flexible pixel 420 format YCBCR_420_888 in Android.
     mVideoFramePool = mGetPoolCb.Run(mCodedSize, HalPixelFormat::YCBCR_420_888, *numOutputBuffers);
     if (!mVideoFramePool) {
         ALOGE("Failed to get block pool with size: %s", toString(mCodedSize).c_str());
@@ -525,6 +542,24 @@ bool V4L2Decoder::changeResolution() {
 
     tryFetchVideoFrame();
     return true;
+}
+
+bool V4L2Decoder::setupOutputFormat(const ui::Size& size) {
+    for (const uint32_t& pixfmt :
+         mDevice->enumerateSupportedPixelformats(V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)) {
+        if (std::find(kSupportedOutputFourccs.begin(), kSupportedOutputFourccs.end(), pixfmt) ==
+            kSupportedOutputFourccs.end()) {
+            ALOGD("Pixel format %s is not supported, skipping...", fourccToString(pixfmt).c_str());
+            continue;
+        }
+
+        if (mOutputQueue->setFormat(pixfmt, size, 0) != std::nullopt) {
+            return true;
+        }
+    }
+
+    ALOGE("Failed to find supported pixel format");
+    return false;
 }
 
 void V4L2Decoder::tryFetchVideoFrame() {
