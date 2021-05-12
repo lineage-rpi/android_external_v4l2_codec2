@@ -3,7 +3,7 @@
 // found in the LICENSE file.
 // Note: ported from Chromium commit head: 22d34680c8ac
 
-#include "v4l2_device_poller.h"
+#include "v4l2_codec2/common/V4L2DevicePoller.h"
 
 #include <string>
 
@@ -12,7 +12,7 @@
 #include "base/threading/thread_checker.h"
 
 #include "macros.h"
-#include "v4l2_device.h"
+#include "v4l2_codec2/common/V4L2Device.h"
 
 namespace media {
 

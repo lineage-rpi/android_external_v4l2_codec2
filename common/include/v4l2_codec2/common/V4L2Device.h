@@ -36,13 +36,13 @@
 
 #include "fourcc.h"
 #include "size.h"
-#include "v4l2_device_poller.h"
 #include "video_codecs.h"
 #include "video_decode_accelerator.h"
 #include "video_encode_accelerator.h"
 #include "video_frame.h"
 #include "video_frame_layout.h"
 #include "video_pixel_format.h"
+#include "v4l2_codec2/common/V4L2DevicePoller.h"
 
 // TODO(mojahsu): remove this once V4L2 headers are updated.
 #ifndef V4L2_PIX_FMT_JPEG_RAW
