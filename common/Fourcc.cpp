@@ -36,128 +36,128 @@ std::optional<Fourcc> Fourcc::fromUint32(uint32_t fourcc) {
     case MM21:
         return Fourcc(static_cast<Value>(fourcc));
     }
-    ALOGE("Unmapped fourcc: %s", media::FourccToString(fourcc).c_str());
+    ALOGE("Unmapped fourcc: %s", fourccToString(fourcc).c_str());
     return std::nullopt;
 }
 
 // static
-std::optional<Fourcc> Fourcc::fromVideoPixelFormat(media::VideoPixelFormat pixelFormat,
+std::optional<Fourcc> Fourcc::fromVideoPixelFormat(VideoPixelFormat pixelFormat,
                                                    bool singlePlanar) {
     if (singlePlanar) {
         switch (pixelFormat) {
-        case media::PIXEL_FORMAT_ARGB:
+        case VideoPixelFormat::ARGB:
             return Fourcc(AR24);
-        case media::PIXEL_FORMAT_ABGR:
+        case VideoPixelFormat::ABGR:
             return Fourcc(AB24);
-        case media::PIXEL_FORMAT_XRGB:
+        case VideoPixelFormat::XRGB:
             return Fourcc(XR24);
-        case media::PIXEL_FORMAT_XBGR:
+        case VideoPixelFormat::XBGR:
             return Fourcc(XB24);
-        case media::PIXEL_FORMAT_BGRA:
+        case VideoPixelFormat::BGRA:
             return Fourcc(RGB4);
-        case media::PIXEL_FORMAT_I420:
+        case VideoPixelFormat::I420:
             return Fourcc(YU12);
-        case media::PIXEL_FORMAT_YV12:
+        case VideoPixelFormat::YV12:
             return Fourcc(YV12);
-        case media::PIXEL_FORMAT_YUY2:
+        case VideoPixelFormat::YUY2:
             return Fourcc(YUYV);
-        case media::PIXEL_FORMAT_NV12:
+        case VideoPixelFormat::NV12:
             return Fourcc(NV12);
-        case media::PIXEL_FORMAT_NV21:
+        case VideoPixelFormat::NV21:
             return Fourcc(NV21);
-        case media::PIXEL_FORMAT_I422:
-        case media::PIXEL_FORMAT_I420A:
-        case media::PIXEL_FORMAT_I444:
-        case media::PIXEL_FORMAT_RGB24:
-        case media::PIXEL_FORMAT_MJPEG:
-        case media::PIXEL_FORMAT_YUV420P9:
-        case media::PIXEL_FORMAT_YUV420P10:
-        case media::PIXEL_FORMAT_YUV422P9:
-        case media::PIXEL_FORMAT_YUV422P10:
-        case media::PIXEL_FORMAT_YUV444P9:
-        case media::PIXEL_FORMAT_YUV444P10:
-        case media::PIXEL_FORMAT_YUV420P12:
-        case media::PIXEL_FORMAT_YUV422P12:
-        case media::PIXEL_FORMAT_YUV444P12:
-        case media::PIXEL_FORMAT_Y16:
-        case media::PIXEL_FORMAT_P016LE:
-        case media::PIXEL_FORMAT_XR30:
-        case media::PIXEL_FORMAT_XB30:
-        case media::PIXEL_FORMAT_UNKNOWN:
+        case VideoPixelFormat::I422:
+        case VideoPixelFormat::I420A:
+        case VideoPixelFormat::I444:
+        case VideoPixelFormat::RGB24:
+        case VideoPixelFormat::MJPEG:
+        case VideoPixelFormat::YUV420P9:
+        case VideoPixelFormat::YUV420P10:
+        case VideoPixelFormat::YUV422P9:
+        case VideoPixelFormat::YUV422P10:
+        case VideoPixelFormat::YUV444P9:
+        case VideoPixelFormat::YUV444P10:
+        case VideoPixelFormat::YUV420P12:
+        case VideoPixelFormat::YUV422P12:
+        case VideoPixelFormat::YUV444P12:
+        case VideoPixelFormat::Y16:
+        case VideoPixelFormat::P016LE:
+        case VideoPixelFormat::XR30:
+        case VideoPixelFormat::XB30:
+        case VideoPixelFormat::UNKNOWN:
             break;
         }
     } else {
         switch (pixelFormat) {
-        case media::PIXEL_FORMAT_I420:
+        case VideoPixelFormat::I420:
             return Fourcc(YM12);
-        case media::PIXEL_FORMAT_YV12:
+        case VideoPixelFormat::YV12:
             return Fourcc(YM21);
-        case media::PIXEL_FORMAT_NV12:
+        case VideoPixelFormat::NV12:
             return Fourcc(NM12);
-        case media::PIXEL_FORMAT_I422:
+        case VideoPixelFormat::I422:
             return Fourcc(YM16);
-        case media::PIXEL_FORMAT_NV21:
+        case VideoPixelFormat::NV21:
             return Fourcc(NM21);
-        case media::PIXEL_FORMAT_I420A:
-        case media::PIXEL_FORMAT_I444:
-        case media::PIXEL_FORMAT_YUY2:
-        case media::PIXEL_FORMAT_ARGB:
-        case media::PIXEL_FORMAT_XRGB:
-        case media::PIXEL_FORMAT_RGB24:
-        case media::PIXEL_FORMAT_MJPEG:
-        case media::PIXEL_FORMAT_YUV420P9:
-        case media::PIXEL_FORMAT_YUV420P10:
-        case media::PIXEL_FORMAT_YUV422P9:
-        case media::PIXEL_FORMAT_YUV422P10:
-        case media::PIXEL_FORMAT_YUV444P9:
-        case media::PIXEL_FORMAT_YUV444P10:
-        case media::PIXEL_FORMAT_YUV420P12:
-        case media::PIXEL_FORMAT_YUV422P12:
-        case media::PIXEL_FORMAT_YUV444P12:
-        case media::PIXEL_FORMAT_Y16:
-        case media::PIXEL_FORMAT_ABGR:
-        case media::PIXEL_FORMAT_XBGR:
-        case media::PIXEL_FORMAT_P016LE:
-        case media::PIXEL_FORMAT_XR30:
-        case media::PIXEL_FORMAT_XB30:
-        case media::PIXEL_FORMAT_BGRA:
-        case media::PIXEL_FORMAT_UNKNOWN:
+        case VideoPixelFormat::I420A:
+        case VideoPixelFormat::I444:
+        case VideoPixelFormat::YUY2:
+        case VideoPixelFormat::ARGB:
+        case VideoPixelFormat::XRGB:
+        case VideoPixelFormat::RGB24:
+        case VideoPixelFormat::MJPEG:
+        case VideoPixelFormat::YUV420P9:
+        case VideoPixelFormat::YUV420P10:
+        case VideoPixelFormat::YUV422P9:
+        case VideoPixelFormat::YUV422P10:
+        case VideoPixelFormat::YUV444P9:
+        case VideoPixelFormat::YUV444P10:
+        case VideoPixelFormat::YUV420P12:
+        case VideoPixelFormat::YUV422P12:
+        case VideoPixelFormat::YUV444P12:
+        case VideoPixelFormat::Y16:
+        case VideoPixelFormat::ABGR:
+        case VideoPixelFormat::XBGR:
+        case VideoPixelFormat::P016LE:
+        case VideoPixelFormat::XR30:
+        case VideoPixelFormat::XB30:
+        case VideoPixelFormat::BGRA:
+        case VideoPixelFormat::UNKNOWN:
             break;
         }
     }
-    ALOGE("Unmapped %s for %s", VideoPixelFormatToString(pixelFormat).c_str(),
+    ALOGE("Unmapped %s for %s", videoPixelFormatToString(pixelFormat).c_str(),
           singlePlanar ? "single-planar" : "multi-planar");
     return std::nullopt;
 }
 
-media::VideoPixelFormat Fourcc::toVideoPixelFormat() const {
+VideoPixelFormat Fourcc::toVideoPixelFormat() const {
     switch (mValue) {
     case AR24:
-        return media::PIXEL_FORMAT_ARGB;
+        return VideoPixelFormat::ARGB;
     case AB24:
-        return media::PIXEL_FORMAT_ABGR;
+        return VideoPixelFormat::ABGR;
     case XR24:
-        return media::PIXEL_FORMAT_XRGB;
+        return VideoPixelFormat::XRGB;
     case XB24:
-        return media::PIXEL_FORMAT_XBGR;
+        return VideoPixelFormat::XBGR;
     case RGB4:
-        return media::PIXEL_FORMAT_BGRA;
+        return VideoPixelFormat::BGRA;
     case YU12:
     case YM12:
-        return media::PIXEL_FORMAT_I420;
+        return VideoPixelFormat::I420;
     case YV12:
     case YM21:
-        return media::PIXEL_FORMAT_YV12;
+        return VideoPixelFormat::YV12;
     case YUYV:
-        return media::PIXEL_FORMAT_YUY2;
+        return VideoPixelFormat::YUY2;
     case NV12:
     case NM12:
-        return media::PIXEL_FORMAT_NV12;
+        return VideoPixelFormat::NV12;
     case NV21:
     case NM21:
-        return media::PIXEL_FORMAT_NV21;
+        return VideoPixelFormat::NV21;
     case YM16:
-        return media::PIXEL_FORMAT_I422;
+        return VideoPixelFormat::I422;
     // V4L2_PIX_FMT_MT21C is only used for MT8173 hardware video decoder output
     // and should be converted by MT8173 image processor for compositor to
     // render. Since it is an intermediate format for video decoder,
@@ -170,11 +170,11 @@ media::VideoPixelFormat Fourcc::toVideoPixelFormat() const {
     // similar to V4L2_PIX_FMT_MT21C but is not compressed ; thus it can also
     // be mapped to PIXEL_FORMAT_NV12.
     case MM21:
-        return media::PIXEL_FORMAT_NV12;
+        return VideoPixelFormat::NV12;
     }
 
     ALOGE("Unmapped Fourcc: %s", toString().c_str());
-    return media::PIXEL_FORMAT_UNKNOWN;
+    return VideoPixelFormat::UNKNOWN;
 }
 
 // static
@@ -247,7 +247,7 @@ bool Fourcc::isMultiPlanar() const {
 }
 
 std::string Fourcc::toString() const {
-    return media::FourccToString(static_cast<uint32_t>(mValue));
+    return fourccToString(static_cast<uint32_t>(mValue));
 }
 
 static_assert(Fourcc::AR24 == V4L2_PIX_FMT_ABGR32, "Mismatch Fourcc");

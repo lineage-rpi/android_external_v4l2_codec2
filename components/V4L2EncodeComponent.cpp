@@ -38,12 +38,12 @@ namespace android {
 
 namespace {
 
-const media::VideoPixelFormat kInputPixelFormat = media::VideoPixelFormat::PIXEL_FORMAT_NV12;
+const VideoPixelFormat kInputPixelFormat = VideoPixelFormat::NV12;
 
 // Get the video frame layout from the specified |inputBlock|.
 // TODO(dstaessens): Clean up code extracting layout from a C2GraphicBlock.
 std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGraphicBlock& block,
-                                                                media::VideoPixelFormat* format) {
+                                                                VideoPixelFormat* format) {
     ALOGV("%s()", __func__);
 
     // Get the C2PlanarLayout from the graphics block. The C2GraphicView returned by block.map()
@@ -97,17 +97,17 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
         }
 
         if (!crcb && !semiplanar) {
-            *format = media::VideoPixelFormat::PIXEL_FORMAT_I420;
+            *format = VideoPixelFormat::I420;
         } else if (!crcb && semiplanar) {
-            *format = media::VideoPixelFormat::PIXEL_FORMAT_NV12;
+            *format = VideoPixelFormat::NV12;
         } else if (crcb && !semiplanar) {
             // HACK: pretend YV12 is I420 now since VEA only accepts I420. (YV12 will be used
             //       for input byte-buffer mode).
             // TODO(dstaessens): Is this hack still necessary now we're not using the VEA directly?
-            //format = media::VideoPixelFormat::PIXEL_FORMAT_YV12;
-            *format = media::VideoPixelFormat::PIXEL_FORMAT_I420;
+            //format = VideoPixelFormat::YV12;
+            *format = VideoPixelFormat::I420;
         } else {
-            *format = media::VideoPixelFormat::PIXEL_FORMAT_NV21;
+            *format = VideoPixelFormat::NV21;
         }
         break;
     }
@@ -115,7 +115,7 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
         offsets[C2PlanarLayout::PLANE_R] = layout.planes[C2PlanarLayout::PLANE_R].offset;
         strides[C2PlanarLayout::PLANE_R] =
                 static_cast<uint32_t>(layout.planes[C2PlanarLayout::PLANE_R].rowInc);
-        *format = media::VideoPixelFormat::PIXEL_FORMAT_ARGB;
+        *format = VideoPixelFormat::ARGB;
         break;
     }
     default:
@@ -132,7 +132,7 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
 }
 
 // Get the video frame stride for the specified |format| and |size|.
-std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, ui::Size size) {
+std::optional<uint32_t> getVideoFrameStride(VideoPixelFormat format, ui::Size size) {
     // Fetch a graphic block from the pool to determine the stride.
     std::shared_ptr<C2BlockPool> pool;
     c2_status_t status = GetCodec2BlockPool(C2BlockPool::BASIC_GRAPHIC, nullptr, &pool);
@@ -143,9 +143,8 @@ std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, ui::
 
     // Android HAL format doesn't have I420, we use YV12 instead and swap the U and V planes when
     // converting to NV12. YCBCR_420_888 will allocate NV12 by minigbm.
-    HalPixelFormat halFormat = (format == media::VideoPixelFormat::PIXEL_FORMAT_I420)
-                                       ? HalPixelFormat::YV12
-                                       : HalPixelFormat::YCBCR_420_888;
+    HalPixelFormat halFormat = (format == VideoPixelFormat::I420) ? HalPixelFormat::YV12
+                                                                  : HalPixelFormat::YCBCR_420_888;
 
     std::shared_ptr<C2GraphicBlock> block;
     status = pool->fetchGraphicBlock(size.width, size.height, static_cast<uint32_t>(halFormat),
@@ -156,7 +155,7 @@ std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, ui::
     }
 
     const C2ConstGraphicBlock constBlock = block->share(C2Rect(size.width, size.height), C2Fence());
-    media::VideoPixelFormat pixelFormat;
+    VideoPixelFormat pixelFormat;
     std::optional<std::vector<VideoFramePlane>> planes =
             getVideoFrameLayout(constBlock, &pixelFormat);
     if (!planes || planes.value().empty()) {
@@ -170,7 +169,7 @@ std::optional<uint32_t> getVideoFrameStride(media::VideoPixelFormat format, ui::
 // Create an input frame from the specified graphic block.
 std::unique_ptr<V4L2Encoder::InputFrame> CreateInputFrame(const C2ConstGraphicBlock& block,
                                                           uint64_t index, int64_t timestamp) {
-    media::VideoPixelFormat format;
+    VideoPixelFormat format;
     std::optional<std::vector<VideoFramePlane>> planes = getVideoFrameLayout(block, &format);
     if (!planes) {
         ALOGE("Failed to get input block's layout");
@@ -655,7 +654,7 @@ bool V4L2EncodeComponent::initializeEncoder() {
 
     // Add an input format convertor if the device doesn't support the requested input format.
     ALOGV("Creating input format convertor (%s)",
-          media::VideoPixelFormatToString(mEncoder->inputFormat()).c_str());
+          videoPixelFormatToString(mEncoder->inputFormat()).c_str());
     mInputFormatConverter =
             FormatConverter::Create(mEncoder->inputFormat(), mEncoder->visibleSize(),
                                     V4L2Encoder::kInputBufferCount, mEncoder->codedSize());

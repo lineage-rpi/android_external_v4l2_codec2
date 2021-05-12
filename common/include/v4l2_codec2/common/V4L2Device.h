@@ -24,7 +24,6 @@
 #include <ui/Size.h>
 #include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
-#include <v4l2_codec2/common/VideoPixelFormat.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 
 namespace android {

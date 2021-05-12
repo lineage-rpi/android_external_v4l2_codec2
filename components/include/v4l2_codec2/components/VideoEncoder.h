@@ -29,19 +29,19 @@ public:
     class InputFrame {
     public:
         InputFrame(std::vector<int>&& fds, std::vector<VideoFramePlane>&& planes,
-                   media::VideoPixelFormat pixelFormat, uint64_t index, int64_t timestamp);
+                   VideoPixelFormat pixelFormat, uint64_t index, int64_t timestamp);
         ~InputFrame() = default;
 
         const std::vector<int>& fds() const { return mFds; }
         const std::vector<VideoFramePlane>& planes() const { return mPlanes; }
-        media::VideoPixelFormat pixelFormat() const { return mPixelFormat; }
+        VideoPixelFormat pixelFormat() const { return mPixelFormat; }
         uint64_t index() const { return mIndex; }
         int64_t timestamp() const { return mTimestamp; }
 
     private:
         const std::vector<int> mFds;
         std::vector<VideoFramePlane> mPlanes;
-        media::VideoPixelFormat mPixelFormat;
+        VideoPixelFormat mPixelFormat;
         uint64_t mIndex = 0;
         int64_t mTimestamp = 0;
     };
@@ -71,7 +71,7 @@ public:
     // Request the next frame encoded to be a key frame, will affect the next non-processed frame.
     virtual void requestKeyframe() = 0;
 
-    virtual media::VideoPixelFormat inputFormat() const = 0;
+    virtual VideoPixelFormat inputFormat() const = 0;
     virtual const ui::Size& visibleSize() const = 0;
     virtual const ui::Size& codedSize() const = 0;
 };
