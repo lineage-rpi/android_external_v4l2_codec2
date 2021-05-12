@@ -12,6 +12,19 @@ namespace android {
 // Helper class to parse H264 NAL units from data.
 class NalParser {
 public:
+    // Type of a SPS NAL unit.
+    static constexpr uint8_t kSPSType = 7;
+    // Type of a PPS NAL unit.
+    static constexpr uint8_t kPPSType = 8;
+
+    // Parameters related to a video's color aspects.
+    struct ColorAspects {
+        int32_t primaries;
+        int32_t transfer;
+        int32_t coeffs;
+        bool fullRange;
+    };
+
     NalParser(const uint8_t* data, size_t length);
 
     // Locates the next NAL after |mNextNalStartCodePos|. If there is one, updates |mCurrNalDataPos|
@@ -22,11 +35,20 @@ public:
     // Note: This method must be called prior to data() and length().
     bool locateNextNal();
 
+    // Locate the sequence parameter set (SPS).
+    bool locateSPS();
+
     // Gets current NAL data (start code is not included).
     const uint8_t* data() const;
 
     // Gets the byte length of current NAL data (start code is not included).
     size_t length() const;
+
+    // Get the type of the current NAL unit.
+    uint8_t type() const;
+
+    // Find the H.264 video's color aspects in the current SPS NAL.
+    bool findCodedColorAspects(ColorAspects* colorAspects);
 
 private:
     const uint8_t* findNextStartCodePos() const;
