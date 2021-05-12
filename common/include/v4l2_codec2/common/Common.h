@@ -9,16 +9,27 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <ui/Rect.h>
 #include <ui/Size.h>
+#include <video_pixel_format.h>
 
 namespace android {
 
-// The offset and stride of a video frame plane.
+// The stride, offset and size of a video frame plane.
 struct VideoFramePlane {
-    uint32_t mOffset;
-    uint32_t mStride;
+    uint32_t mStride = 0;
+    size_t mOffset = 0;
+    size_t mSize = 0;
+};
+
+// A video frame's layout, containing pixel format, size and layout of individual planes.
+struct VideoFrameLayout {
+    media::VideoPixelFormat mFormat = media::PIXEL_FORMAT_UNKNOWN;
+    android::ui::Size mCodedSize;
+    std::vector<VideoFramePlane> mPlanes;
+    bool mMultiPlanar = false;
 };
 
 // Check whether |rect1| completely contains |rect2|.
