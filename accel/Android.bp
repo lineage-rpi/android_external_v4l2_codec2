@@ -15,8 +15,6 @@ cc_library {
         "color_plane_layout.cc",
         "fourcc.cc",
         "video_codecs.cc",
-        "video_decode_accelerator.cc",
-        "video_encode_accelerator.cc",
         "video_frame.cc",
         "video_frame_layout.cc",
         "video_pixel_format.cc",
