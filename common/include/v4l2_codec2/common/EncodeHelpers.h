@@ -6,7 +6,6 @@
 #define ANDROID_V4L2_CODEC2_COMMON_HELPERS_H
 
 #include <C2Config.h>
-#include <C2ParamDef.h>
 #include <system/graphics.h>
 
 #include <size.h>
