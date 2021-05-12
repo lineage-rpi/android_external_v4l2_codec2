@@ -4,7 +4,7 @@
 // Note: ported from Chromium commit head: 3b7ce92816e2
 // Note: only necessary functions are ported from video_types.cc
 
-#include "video_pixel_format.h"
+#include <v4l2_codec2/common/VideoPixelFormat.h>
 
 #include "base/bits.h"
 #include "base/logging.h"

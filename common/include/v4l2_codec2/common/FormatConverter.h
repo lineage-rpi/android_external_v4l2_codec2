@@ -12,7 +12,8 @@
 #include <C2Buffer.h>
 #include <ui/Size.h>
 #include <utils/StrongPointer.h>
-#include <video_pixel_format.h>
+
+#include <v4l2_codec2/common/VideoPixelFormat.h>
 
 namespace android {
 
