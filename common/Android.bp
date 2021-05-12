@@ -18,7 +18,6 @@ cc_library {
     srcs: [
         "EncodeHelpers.cpp",
         "FormatConverter.cpp",
-        "GenericV4L2Device.cpp",
         "NalParser.cpp",
         "V4L2ComponentCommon.cpp",
         "VideoTypes.cpp",
