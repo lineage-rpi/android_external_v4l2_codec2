@@ -1456,24 +1456,24 @@ ui::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& forma
         visibleSize.set(base::checked_cast<int>(format.fmt.pix_mp.width),
                         base::checked_cast<int>(format.fmt.pix_mp.height));
         const uint32_t pixFmt = format.fmt.pix_mp.pixelformat;
-        const auto frameFourcc = media::Fourcc::FromV4L2PixFmt(pixFmt);
+        const auto frameFourcc = Fourcc::fromV4L2PixFmt(pixFmt);
         if (!frameFourcc) {
             ALOGE("Unsupported format %s", media::FourccToString(pixFmt).c_str());
             return codedSize;
         }
-        frameFormat = frameFourcc->ToVideoPixelFormat();
+        frameFormat = frameFourcc->toVideoPixelFormat();
     } else {
         bytesPerLine = base::checked_cast<int>(format.fmt.pix.bytesperline);
         sizeimage = base::checked_cast<int>(format.fmt.pix.sizeimage);
         visibleSize.set(base::checked_cast<int>(format.fmt.pix.width),
                         base::checked_cast<int>(format.fmt.pix.height));
         const uint32_t fourcc = format.fmt.pix.pixelformat;
-        const auto frameFourcc = media::Fourcc::FromV4L2PixFmt(fourcc);
+        const auto frameFourcc = Fourcc::fromV4L2PixFmt(fourcc);
         if (!frameFourcc) {
             ALOGE("Unsupported format %s", media::FourccToString(fourcc).c_str());
             return codedSize;
         }
-        frameFormat = frameFourcc ? frameFourcc->ToVideoPixelFormat() : media::PIXEL_FORMAT_UNKNOWN;
+        frameFormat = frameFourcc ? frameFourcc->toVideoPixelFormat() : media::PIXEL_FORMAT_UNKNOWN;
     }
 
     // V4L2 does not provide per-plane bytesperline (bpl) when different components are sharing one
@@ -1621,13 +1621,13 @@ std::optional<VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
     }
     const v4l2_pix_format_mplane& pixMp = format.fmt.pix_mp;
     const uint32_t& pixFmt = pixMp.pixelformat;
-    const auto videoFourcc = media::Fourcc::FromV4L2PixFmt(pixFmt);
+    const auto videoFourcc = Fourcc::fromV4L2PixFmt(pixFmt);
     if (!videoFourcc) {
         ALOGE("Failed to convert pixel format to VideoPixelFormat: %s",
               media::FourccToString(pixFmt).c_str());
         return std::nullopt;
     }
-    const media::VideoPixelFormat videoFormat = videoFourcc->ToVideoPixelFormat();
+    const media::VideoPixelFormat videoFormat = videoFourcc->toVideoPixelFormat();
     const size_t numBuffers = pixMp.num_planes;
     const size_t numColorPlanes = media::NumPlanes(videoFormat);
     if (numColorPlanes == 0) {
@@ -1691,9 +1691,9 @@ std::optional<VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
 
 // static
 size_t V4L2Device::getNumPlanesOfV4L2PixFmt(uint32_t pixFmt) {
-    std::optional<media::Fourcc> fourcc = media::Fourcc::FromV4L2PixFmt(pixFmt);
-    if (fourcc && fourcc->IsMultiPlanar()) {
-        return media::NumPlanes(fourcc->ToVideoPixelFormat());
+    std::optional<Fourcc> fourcc = Fourcc::fromV4L2PixFmt(pixFmt);
+    if (fourcc && fourcc->isMultiPlanar()) {
+        return media::NumPlanes(fourcc->toVideoPixelFormat());
     }
     return 1u;
 }
