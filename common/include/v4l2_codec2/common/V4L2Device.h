@@ -452,7 +452,7 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   // Open a V4L2 device of |type| for use with |v4l2_pixfmt|.
   // Return true on success.
   // The device will be closed in the destructor.
-  virtual bool Open(Type type, uint32_t v4l2_pixfmt) = 0;
+  bool Open(Type type, uint32_t v4l2_pixfmt);
 
   // Returns the V4L2Queue corresponding to the requested |type|, or nullptr
   // if the requested queue type is not supported.
@@ -460,7 +460,7 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 
   // Parameters and return value are the same as for the standard ioctl() system
   // call.
-  virtual int Ioctl(int request, void* arg) = 0;
+  int Ioctl(int request, void* arg);
 
   // This method sleeps until either:
   // - SetDevicePollInterrupt() is called (on another thread),
@@ -469,7 +469,7 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   //   |*event_pending| will be set to true.
   // Returns false on error, true otherwise.
   // This method should be called from a separate thread.
-  virtual bool Poll(bool poll_device, bool* event_pending) = 0;
+  bool Poll(bool poll_device, bool* event_pending);
 
   // These methods are used to interrupt the thread sleeping on Poll() and force
   // it to return regardless of device state, which is usually when the client
@@ -477,28 +477,28 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   // client state change, etc.). When SetDevicePollInterrupt() is called, Poll()
   // will return immediately, and any subsequent calls to it will also do so
   // until ClearDevicePollInterrupt() is called.
-  virtual bool SetDevicePollInterrupt() = 0;
-  virtual bool ClearDevicePollInterrupt() = 0;
+  bool SetDevicePollInterrupt();
+  bool ClearDevicePollInterrupt();
 
   // Wrappers for standard mmap/munmap system calls.
-  virtual void* Mmap(void* addr,
+  void* Mmap(void* addr,
                      unsigned int len,
                      int prot,
                      int flags,
-                     unsigned int offset) = 0;
-  virtual void Munmap(void* addr, unsigned int len) = 0;
+                     unsigned int offset);
+  void Munmap(void* addr, unsigned int len);
 
   // Return a vector of dmabuf file descriptors, exported for V4L2 buffer with
   // |index|, assuming the buffer contains |num_planes| V4L2 planes and is of
   // |type|. Return an empty vector on failure.
   // The caller is responsible for closing the file descriptors after use.
-  virtual std::vector<base::ScopedFD> GetDmabufsForV4L2Buffer(
+  std::vector<base::ScopedFD> GetDmabufsForV4L2Buffer(
       int index,
       size_t num_planes,
-      enum v4l2_buf_type type) = 0;
+      enum v4l2_buf_type type);
 
   // Returns the preferred V4L2 input formats for |type| or empty if none.
-  virtual std::vector<uint32_t> PreferredInputFormat(Type type) = 0;
+  std::vector<uint32_t> PreferredInputFormat(Type type);
 
   // NOTE: The below methods to query capabilities have a side effect of
   // closing the previously-open device, if any, and should not be called after
@@ -515,25 +515,25 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 
   // Return V4L2 pixelformats supported by the available image processor
   // devices for |buf_type|.
-  virtual std::vector<uint32_t> GetSupportedImageProcessorPixelformats(
-      v4l2_buf_type buf_type) = 0;
+  std::vector<uint32_t> GetSupportedImageProcessorPixelformats(
+      v4l2_buf_type buf_type);
 
   // Return supported profiles for decoder, including only profiles for given
   // fourcc |pixelformats|.
-  virtual VideoDecodeAccelerator::SupportedProfiles GetSupportedDecodeProfiles(
+  VideoDecodeAccelerator::SupportedProfiles GetSupportedDecodeProfiles(
       const size_t num_formats,
-      const uint32_t pixelformats[]) = 0;
+      const uint32_t pixelformats[]);
 
   // Return supported profiles for encoder.
-  virtual VideoEncodeAccelerator::SupportedProfiles
-  GetSupportedEncodeProfiles() = 0;
+  VideoEncodeAccelerator::SupportedProfiles
+  GetSupportedEncodeProfiles();
 
   // Return true if image processing is supported, false otherwise.
-  virtual bool IsImageProcessingSupported() = 0;
+  bool IsImageProcessingSupported();
 
   // Return true if JPEG codec is supported, false otherwise.
-  virtual bool IsJpegDecodingSupported() = 0;
-  virtual bool IsJpegEncodingSupported() = 0;
+  bool IsJpegDecodingSupported();
+  bool IsJpegEncodingSupported();
 
   // Start polling on this V4L2Device. |event_callback| will be posted to
   // the caller's sequence if a buffer is ready to be dequeued and/or a V4L2
@@ -559,10 +559,14 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   // Check whether the V4L2 device has the specified |capabilities|.
   bool HasCapabilities(uint32_t capabilities);
 
- protected:
+ private:
+  // Vector of video device node paths and corresponding pixelformats supported
+  // by each device node.
+  using Devices = std::vector<std::pair<std::string, std::vector<uint32_t>>>;
+
   friend class base::RefCountedThreadSafe<V4L2Device>;
   V4L2Device();
-  virtual ~V4L2Device();
+  ~V4L2Device();
 
   VideoDecodeAccelerator::SupportedProfiles EnumerateSupportedDecodeProfiles(
       const size_t num_formats,
@@ -570,18 +574,51 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 
   VideoEncodeAccelerator::SupportedProfiles EnumerateSupportedEncodeProfiles();
 
- private:
   // Perform platform-specific initialization of the device instance.
   // Return true on success, false on error or if the particular implementation
   // is not available.
-  virtual bool Initialize() = 0;
+  bool Initialize();
 
-  // Associates a v4l2_buf_type to its queue.
-  base::flat_map<enum v4l2_buf_type, V4L2Queue*> queues_;
+  // Open device node for |path| as a device of |type|.
+  bool OpenDevicePath(const std::string& path, Type type);
+
+  // Close the currently open device.
+  void CloseDevice();
+
+  // Enumerate all V4L2 devices on the system for |type| and store the results
+  // under devices_by_type_[type].
+  void EnumerateDevicesForType(V4L2Device::Type type);
+
+  // Return device information for all devices of |type| available in the
+  // system. Enumerates and queries devices on first run and caches the results
+  // for subsequent calls.
+  const Devices& GetDevicesForType(V4L2Device::Type type);
+
+  // Return device node path for device of |type| supporting |pixfmt|, or
+  // an empty string if the given combination is not supported by the system.
+  std::string GetDevicePathFor(V4L2Device::Type type, uint32_t pixfmt);
 
   // Callback that is called upon a queue's destruction, to cleanup its pointer
   // in queues_.
   void OnQueueDestroyed(v4l2_buf_type buf_type);
+
+  // Lazily initialize static data after sandbox is enabled.  Return false on
+  // init failure.
+  static bool PostSandboxInitialization();
+
+  // Stores information for all devices available on the system
+  // for each device Type.
+  std::map<V4L2Device::Type, Devices> devices_by_type_;
+
+  // The actual device fd.
+  base::ScopedFD device_fd_;
+
+  // eventfd fd to signal device poll thread when its poll() should be
+  // interrupted.
+  base::ScopedFD device_poll_interrupt_fd_;
+
+  // Associates a v4l2_buf_type to its queue.
+  base::flat_map<enum v4l2_buf_type, V4L2Queue*> queues_;
 
   // Used if EnablePolling() is called to signal the user that an event
   // happened or a buffer is ready to be dequeued.
@@ -589,6 +626,8 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 
   // Indicates whether the request queue creation has been tried once.
   bool requests_queue_creation_called_ = false;
+
+  DISALLOW_COPY_AND_ASSIGN(V4L2Device);
 
   SEQUENCE_CHECKER(client_sequence_checker_);
 };
