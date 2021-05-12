@@ -51,7 +51,7 @@ size_t GetMaxOutputBufferSize(const ui::Size& size) {
 
 // static
 std::unique_ptr<VideoEncoder> V4L2Encoder::create(
-        media::VideoCodecProfile outputProfile, std::optional<uint8_t> level,
+        C2Config::profile_t outputProfile, std::optional<uint8_t> level,
         const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
         FetchOutputBufferCB fetchOutputBufferCb, InputBufferDoneCB inputBufferDoneCb,
         OutputBufferDoneCB outputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb,
@@ -188,7 +188,7 @@ media::VideoPixelFormat V4L2Encoder::inputFormat() const {
                         : media::VideoPixelFormat::PIXEL_FORMAT_UNKNOWN;
 }
 
-bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::optional<uint8_t> level,
+bool V4L2Encoder::initialize(C2Config::profile_t outputProfile, std::optional<uint8_t> level,
                              const ui::Size& visibleSize, uint32_t stride,
                              uint32_t keyFramePeriod) {
     ALOGV("%s()", __func__);
@@ -201,9 +201,9 @@ bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::option
 
     // Open the V4L2 device for encoding to the requested output format.
     // TODO(dstaessens): Avoid conversion to VideoCodecProfile and use C2Config::profile_t directly.
-    uint32_t outputPixelFormat = V4L2Device::videoCodecProfileToV4L2PixFmt(outputProfile, false);
+    uint32_t outputPixelFormat = V4L2Device::C2ProfileToV4L2PixFmt(outputProfile, false);
     if (!outputPixelFormat) {
-        ALOGE("Invalid output profile %s", media::GetProfileName(outputProfile).c_str());
+        ALOGE("Invalid output profile %s", profileToString(outputProfile));
         return false;
     }
 
@@ -214,8 +214,7 @@ bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::option
     }
 
     if (!mDevice->open(V4L2Device::Type::kEncoder, outputPixelFormat)) {
-        ALOGE("Failed to open device for profile %s (%s)",
-              media::GetProfileName(outputProfile).c_str(),
+        ALOGE("Failed to open device for profile %s (%s)", profileToString(outputProfile),
               media::FourccToString(outputPixelFormat).c_str());
         return false;
     }
@@ -543,30 +542,29 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     return true;
 }
 
-bool V4L2Encoder::configureOutputFormat(media::VideoCodecProfile outputProfile) {
+bool V4L2Encoder::configureOutputFormat(C2Config::profile_t outputProfile) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState == State::UNINITIALIZED);
     ALOG_ASSERT(!mOutputQueue->isStreaming());
     ALOG_ASSERT(!isEmpty(mVisibleSize));
 
-    auto format =
-            mOutputQueue->setFormat(V4L2Device::videoCodecProfileToV4L2PixFmt(outputProfile, false),
-                                    mVisibleSize, GetMaxOutputBufferSize(mVisibleSize));
+    auto format = mOutputQueue->setFormat(V4L2Device::C2ProfileToV4L2PixFmt(outputProfile, false),
+                                          mVisibleSize, GetMaxOutputBufferSize(mVisibleSize));
     if (!format) {
-        ALOGE("Failed to set output format to %s", media::GetProfileName(outputProfile).c_str());
+        ALOGE("Failed to set output format to %s", profileToString(outputProfile));
         return false;
     }
 
     // The device might adjust the requested output buffer size to match hardware requirements.
     mOutputBufferSize = format->fmt.pix_mp.plane_fmt[0].sizeimage;
 
-    ALOGV("Output format set to %s (buffer size: %u)", media::GetProfileName(outputProfile).c_str(),
+    ALOGV("Output format set to %s (buffer size: %u)", profileToString(outputProfile),
           mOutputBufferSize);
     return true;
 }
 
-bool V4L2Encoder::configureDevice(media::VideoCodecProfile outputProfile,
+bool V4L2Encoder::configureDevice(C2Config::profile_t outputProfile,
                                   std::optional<const uint8_t> outputH264Level) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
@@ -586,14 +584,15 @@ bool V4L2Encoder::configureDevice(media::VideoCodecProfile outputProfile,
                                                 V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)});
 
     // All controls below are H.264-specific, so we can return here if the profile is not H.264.
-    if (outputProfile >= media::H264PROFILE_MIN || outputProfile <= media::H264PROFILE_MAX) {
+    if (outputProfile >= C2Config::PROFILE_AVC_BASELINE ||
+        outputProfile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH) {
         return configureH264(outputProfile, outputH264Level);
     }
 
     return true;
 }
 
-bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
+bool V4L2Encoder::configureH264(C2Config::profile_t outputProfile,
                                 std::optional<const uint8_t> outputH264Level) {
     // When encoding H.264 we want to prepend SPS and PPS to each IDR for resilience. Some
     // devices support this through the V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR control.
@@ -618,7 +617,7 @@ bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
     h264Ctrls.emplace_back(V4L2_CID_MPEG_VIDEO_H264_MAX_QP, 51);
 
     // Set H.264 profile.
-    int32_t profile = V4L2Device::videoCodecProfileToV4L2H264Profile(outputProfile);
+    int32_t profile = V4L2Device::c2ProfileToV4L2H264Profile(outputProfile);
     if (profile < 0) {
         ALOGE("Trying to set invalid H.264 profile");
         return false;

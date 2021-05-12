@@ -9,7 +9,6 @@
 #include <system/graphics.h>
 #include <ui/Size.h>
 
-#include <video_codecs.h>
 #include <video_pixel_format.h>
 
 namespace android {
@@ -30,15 +29,12 @@ struct VideoEncoderAcceleratorConfig {
 
     media::VideoPixelFormat mInputFormat;
     ui::Size mInputVisibleSize;
-    media::VideoCodecProfile mOutputProfile;
+    C2Config::profile_t mOutputProfile;
     uint32_t mInitialBitrate;
     uint32_t mInitialFramerate;
     uint8_t mH264OutputLevel;
     VideoFrameStorageType mStorageType;
 };
-
-// Convert the specified C2Config profile to a media::VideoCodecProfile.
-media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profile);
 
 // Convert the specified C2Config level to a V4L2 level.
 uint8_t c2LevelToV4L2Level(C2Config::level_t level);

@@ -34,6 +34,7 @@
 
 #include <color_plane_layout.h>
 #include <v4l2_codec2/common/Common.h>
+#include <v4l2_codec2/common/VideoTypes.h>
 #include <video_pixel_format.h>
 
 // VP8 parsed frames
@@ -1218,81 +1219,83 @@ std::vector<uint32_t> V4L2Device::preferredInputFormat(Type type) {
 }
 
 // static
-uint32_t V4L2Device::videoCodecProfileToV4L2PixFmt(media::VideoCodecProfile profile,
-                                                   bool sliceBased) {
-    if (profile >= media::H264PROFILE_MIN && profile <= media::H264PROFILE_MAX) {
+uint32_t V4L2Device::C2ProfileToV4L2PixFmt(C2Config::profile_t profile, bool sliceBased) {
+    if (profile >= C2Config::PROFILE_AVC_BASELINE &&
+        profile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH) {
         if (sliceBased) {
             return V4L2_PIX_FMT_H264_SLICE;
         } else {
             return V4L2_PIX_FMT_H264;
         }
-    } else if (profile >= media::VP8PROFILE_MIN && profile <= media::VP8PROFILE_MAX) {
+    } else if (profile >= C2Config::PROFILE_VP8_0 && profile <= C2Config::PROFILE_VP8_3) {
         if (sliceBased) {
             return V4L2_PIX_FMT_VP8_FRAME;
         } else {
             return V4L2_PIX_FMT_VP8;
         }
-    } else if (profile >= media::VP9PROFILE_MIN && profile <= media::VP9PROFILE_MAX) {
+    } else if (profile >= C2Config::PROFILE_VP9_0 && profile <= C2Config::PROFILE_VP9_3) {
         if (sliceBased) {
             return V4L2_PIX_FMT_VP9_FRAME;
         } else {
             return V4L2_PIX_FMT_VP9;
         }
     } else {
-        ALOGE("Unknown profile: %s", GetProfileName(profile).c_str());
+        ALOGE("Unknown profile: %s", profileToString(profile));
         return 0;
     }
 }
 
 // static
-media::VideoCodecProfile V4L2Device::v4L2ProfileToVideoCodecProfile(VideoCodec codec,
-                                                                    uint32_t profile) {
+C2Config::profile_t V4L2Device::v4L2ProfileToC2Profile(VideoCodec codec, uint32_t profile) {
     switch (codec) {
     case VideoCodec::H264:
         switch (profile) {
         case V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE:
         case V4L2_MPEG_VIDEO_H264_PROFILE_CONSTRAINED_BASELINE:
-            return media::H264PROFILE_BASELINE;
+            return C2Config::PROFILE_AVC_BASELINE;
         case V4L2_MPEG_VIDEO_H264_PROFILE_MAIN:
-            return media::H264PROFILE_MAIN;
+            return C2Config::PROFILE_AVC_MAIN;
         case V4L2_MPEG_VIDEO_H264_PROFILE_EXTENDED:
-            return media::H264PROFILE_EXTENDED;
+            return C2Config::PROFILE_AVC_EXTENDED;
         case V4L2_MPEG_VIDEO_H264_PROFILE_HIGH:
-            return media::H264PROFILE_HIGH;
+            return C2Config::PROFILE_AVC_HIGH;
         }
         break;
     case VideoCodec::VP8:
         switch (profile) {
         case V4L2_MPEG_VIDEO_VP8_PROFILE_0:
+            return C2Config::PROFILE_VP8_0;
         case V4L2_MPEG_VIDEO_VP8_PROFILE_1:
+            return C2Config::PROFILE_VP8_1;
         case V4L2_MPEG_VIDEO_VP8_PROFILE_2:
+            return C2Config::PROFILE_VP8_2;
         case V4L2_MPEG_VIDEO_VP8_PROFILE_3:
-            return media::VP8PROFILE_ANY;
+            return C2Config::PROFILE_VP8_3;
         }
         break;
     case VideoCodec::VP9:
         switch (profile) {
         case V4L2_MPEG_VIDEO_VP9_PROFILE_0:
-            return media::VP9PROFILE_PROFILE0;
+            return C2Config::PROFILE_VP9_0;
         case V4L2_MPEG_VIDEO_VP9_PROFILE_1:
-            return media::VP9PROFILE_PROFILE1;
+            return C2Config::PROFILE_VP9_1;
         case V4L2_MPEG_VIDEO_VP9_PROFILE_2:
-            return media::VP9PROFILE_PROFILE2;
+            return C2Config::PROFILE_VP9_2;
         case V4L2_MPEG_VIDEO_VP9_PROFILE_3:
-            return media::VP9PROFILE_PROFILE3;
+            return C2Config::PROFILE_VP9_3;
         }
         break;
     default:
         ALOGE("Unknown codec: %u", codec);
     }
     ALOGE("Unknown profile: %u", profile);
-    return media::VIDEO_CODEC_PROFILE_UNKNOWN;
+    return C2Config::PROFILE_UNUSED;
 }
 
-std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles(
-        uint32_t pixFmt, bool /*isEncoder*/) {
+std::vector<C2Config::profile_t> V4L2Device::v4L2PixFmtToC2Profiles(uint32_t pixFmt,
+                                                                    bool /*isEncoder*/) {
     auto getSupportedProfiles = [this](VideoCodec codec,
-                                       std::vector<media::VideoCodecProfile>* profiles) {
+                                       std::vector<C2Config::profile_t>* profiles) {
         uint32_t queryId = 0;
         switch (codec) {
         case VideoCodec::H264:
@@ -1318,15 +1321,15 @@ std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles
         for (queryMenu.index = queryCtrl.minimum;
              static_cast<int>(queryMenu.index) <= queryCtrl.maximum; queryMenu.index++) {
             if (ioctl(VIDIOC_QUERYMENU, &queryMenu) == 0) {
-                const media::VideoCodecProfile profile =
-                        V4L2Device::v4L2ProfileToVideoCodecProfile(codec, queryMenu.index);
-                if (profile != media::VIDEO_CODEC_PROFILE_UNKNOWN) profiles->push_back(profile);
+                const C2Config::profile_t profile =
+                        V4L2Device::v4L2ProfileToC2Profile(codec, queryMenu.index);
+                if (profile != C2Config::PROFILE_UNUSED) profiles->push_back(profile);
             }
         }
         return true;
     };
 
-    std::vector<media::VideoCodecProfile> profiles;
+    std::vector<C2Config::profile_t> profiles;
     switch (pixFmt) {
     case V4L2_PIX_FMT_H264:
     case V4L2_PIX_FMT_H264_SLICE:
@@ -1334,22 +1337,24 @@ std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles
             ALOGW("Driver doesn't support QUERY H264 profiles, "
                   "use default values, Base, Main, High");
             profiles = {
-                    media::H264PROFILE_BASELINE,
-                    media::H264PROFILE_MAIN,
-                    media::H264PROFILE_HIGH,
+                    C2Config::PROFILE_AVC_BASELINE,
+                    C2Config::PROFILE_AVC_MAIN,
+                    C2Config::PROFILE_AVC_HIGH,
             };
         }
         break;
     case V4L2_PIX_FMT_VP8:
     case V4L2_PIX_FMT_VP8_FRAME:
-        profiles = {media::VP8PROFILE_ANY};
+        if (!getSupportedProfiles(VideoCodec::VP8, &profiles)) {
+            ALOGW("Driver doesn't support QUERY VP8 profiles, use default values, Profile0");
+            profiles = {C2Config::PROFILE_VP8_0};
+        }
         break;
     case V4L2_PIX_FMT_VP9:
     case V4L2_PIX_FMT_VP9_FRAME:
         if (!getSupportedProfiles(VideoCodec::VP9, &profiles)) {
-            ALOGW("Driver doesn't support QUERY VP9 profiles, "
-                  "use default values, Profile0");
-            profiles = {media::VP9PROFILE_PROFILE0};
+            ALOGW("Driver doesn't support QUERY VP9 profiles, use default values, Profile0");
+            profiles = {C2Config::PROFILE_VP9_0};
         }
         break;
     default:
@@ -1364,29 +1369,29 @@ std::vector<media::VideoCodecProfile> V4L2Device::v4L2PixFmtToVideoCodecProfiles
 }
 
 // static
-int32_t V4L2Device::videoCodecProfileToV4L2H264Profile(media::VideoCodecProfile profile) {
+int32_t V4L2Device::c2ProfileToV4L2H264Profile(C2Config::profile_t profile) {
     switch (profile) {
-    case media::H264PROFILE_BASELINE:
+    case C2Config::PROFILE_AVC_BASELINE:
         return V4L2_MPEG_VIDEO_H264_PROFILE_BASELINE;
-    case media::H264PROFILE_MAIN:
+    case C2Config::PROFILE_AVC_MAIN:
         return V4L2_MPEG_VIDEO_H264_PROFILE_MAIN;
-    case media::H264PROFILE_EXTENDED:
+    case C2Config::PROFILE_AVC_EXTENDED:
         return V4L2_MPEG_VIDEO_H264_PROFILE_EXTENDED;
-    case media::H264PROFILE_HIGH:
+    case C2Config::PROFILE_AVC_HIGH:
         return V4L2_MPEG_VIDEO_H264_PROFILE_HIGH;
-    case media::H264PROFILE_HIGH10PROFILE:
+    case C2Config::PROFILE_AVC_HIGH_10:
         return V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_10;
-    case media::H264PROFILE_HIGH422PROFILE:
+    case C2Config::PROFILE_AVC_HIGH_422:
         return V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_422;
-    case media::H264PROFILE_HIGH444PREDICTIVEPROFILE:
+    case C2Config::PROFILE_AVC_HIGH_444_PREDICTIVE:
         return V4L2_MPEG_VIDEO_H264_PROFILE_HIGH_444_PREDICTIVE;
-    case media::H264PROFILE_SCALABLEBASELINE:
+    case C2Config::PROFILE_AVC_SCALABLE_BASELINE:
         return V4L2_MPEG_VIDEO_H264_PROFILE_SCALABLE_BASELINE;
-    case media::H264PROFILE_SCALABLEHIGH:
+    case C2Config::PROFILE_AVC_SCALABLE_HIGH:
         return V4L2_MPEG_VIDEO_H264_PROFILE_SCALABLE_HIGH;
-    case media::H264PROFILE_STEREOHIGH:
+    case C2Config::PROFILE_AVC_STEREO_HIGH:
         return V4L2_MPEG_VIDEO_H264_PROFILE_STEREO_HIGH;
-    case media::H264PROFILE_MULTIVIEWHIGH:
+    case C2Config::PROFILE_AVC_MULTIVIEW_HIGH:
         return V4L2_MPEG_VIDEO_H264_PROFILE_MULTIVIEW_HIGH;
     default:
         ALOGE("Add more cases as needed");
@@ -1814,14 +1819,14 @@ V4L2Device::SupportedDecodeProfiles V4L2Device::enumerateSupportedDecodeProfiles
         SupportedDecodeProfile profile;
         getSupportedResolution(pixelFormat, &profile.min_resolution, &profile.max_resolution);
 
-        const auto videoCodecProfiles = v4L2PixFmtToVideoCodecProfiles(pixelFormat, false);
+        const auto videoCodecProfiles = v4L2PixFmtToC2Profiles(pixelFormat, false);
 
         for (const auto& videoCodecProfile : videoCodecProfiles) {
             profile.profile = videoCodecProfile;
             profiles.push_back(profile);
 
-            ALOGV("Found decoder profile %s, resolutions: %s %s",
-                  GetProfileName(profile.profile).c_str(), toString(profile.min_resolution).c_str(),
+            ALOGV("Found decoder profile %s, resolutions: %s %s", profileToString(profile.profile),
+                  toString(profile.min_resolution).c_str(),
                   toString(profile.max_resolution).c_str());
         }
     }
@@ -1842,14 +1847,13 @@ V4L2Device::SupportedEncodeProfiles V4L2Device::enumerateSupportedEncodeProfiles
         ui::Size minResolution;
         getSupportedResolution(pixelformat, &minResolution, &profile.max_resolution);
 
-        const auto videoCodecProfiles = v4L2PixFmtToVideoCodecProfiles(pixelformat, true);
+        const auto videoCodecProfiles = v4L2PixFmtToC2Profiles(pixelformat, true);
 
         for (const auto& videoCodecProfile : videoCodecProfiles) {
             profile.profile = videoCodecProfile;
             profiles.push_back(profile);
 
-            ALOGV("Found encoder profile %s, max resolution: %s",
-                  GetProfileName(profile.profile).c_str(),
+            ALOGV("Found encoder profile %s, max resolution: %s", profileToString(profile.profile),
                   toString(profile.max_resolution).c_str());
         }
     }
