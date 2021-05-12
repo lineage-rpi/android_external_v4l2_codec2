@@ -49,7 +49,6 @@ private:
               : buffer(std::move(buffer)), decodeCb(std::move(decodeCb)) {}
         DecodeRequest(DecodeRequest&&) = default;
         ~DecodeRequest() = default;
-        DecodeRequest& operator=(DecodeRequest&&);
 
         std::unique_ptr<BitstreamBuffer> buffer;  // nullptr means Drain
         DecodeCB decodeCb;
