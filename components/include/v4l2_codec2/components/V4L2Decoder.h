@@ -13,8 +13,8 @@
 #include <base/callback.h>
 #include <base/memory/weak_ptr.h>
 
-#include <size.h>
 #include <ui/Rect.h>
+#include <ui/Size.h>
 #include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/VideoDecoder.h>
@@ -69,7 +69,7 @@ private:
 
     std::optional<size_t> getNumOutputBuffers();
     std::optional<struct v4l2_format> getFormatInfo();
-    Rect getVisibleRect(const media::Size& codedSize);
+    Rect getVisibleRect(const ui::Size& codedSize);
     bool sendV4L2DecoderCmd(bool start);
 
     void setState(State newState);
@@ -89,7 +89,7 @@ private:
     DecodeCB mDrainCb;
     ErrorCB mErrorCb;
 
-    media::Size mCodedSize;
+    ui::Size mCodedSize;
     Rect mVisibleRect;
 
     std::map<size_t, std::unique_ptr<VideoFrame>> mFrameAtDevice;

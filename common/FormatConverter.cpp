@@ -94,9 +94,9 @@ std::unique_ptr<ImplDefinedToRGBXMap> ImplDefinedToRGBXMap::Create(
 
 // static
 std::unique_ptr<FormatConverter> FormatConverter::Create(media::VideoPixelFormat outFormat,
-                                                         const media::Size& visibleSize,
+                                                         const ui::Size& visibleSize,
                                                          uint32_t inputCount,
-                                                         const media::Size& codedSize) {
+                                                         const ui::Size& codedSize) {
     if (outFormat != media::VideoPixelFormat::PIXEL_FORMAT_I420 &&
         outFormat != media::VideoPixelFormat::PIXEL_FORMAT_NV12) {
         ALOGE("Unsupported output format: %d", static_cast<int32_t>(outFormat));
@@ -112,11 +112,11 @@ std::unique_ptr<FormatConverter> FormatConverter::Create(media::VideoPixelFormat
 }
 
 c2_status_t FormatConverter::initialize(media::VideoPixelFormat outFormat,
-                                        const media::Size& visibleSize, uint32_t inputCount,
-                                        const media::Size& codedSize) {
+                                        const ui::Size& visibleSize, uint32_t inputCount,
+                                        const ui::Size& codedSize) {
     ALOGV("initialize(out_format=%s, visible_size=%dx%d, input_count=%u, coded_size=%dx%d)",
-          media::VideoPixelFormatToString(outFormat).c_str(), visibleSize.width(),
-          visibleSize.height(), inputCount, codedSize.width(), codedSize.height());
+          media::VideoPixelFormatToString(outFormat).c_str(), visibleSize.width, visibleSize.height,
+          inputCount, codedSize.width, codedSize.height);
 
     std::shared_ptr<C2BlockPool> pool;
     c2_status_t status = GetCodec2BlockPool(C2BlockPool::BASIC_GRAPHIC, nullptr, &pool);
@@ -137,7 +137,7 @@ c2_status_t FormatConverter::initialize(media::VideoPixelFormat outFormat,
     uint32_t bufferCount = std::max(inputCount, kMinInputBufferCount);
     for (uint32_t i = 0; i < bufferCount; i++) {
         std::shared_ptr<C2GraphicBlock> block;
-        status = pool->fetchGraphicBlock(codedSize.width(), codedSize.height(),
+        status = pool->fetchGraphicBlock(codedSize.width, codedSize.height,
                                          static_cast<uint32_t>(halFormat),
                                          {(C2MemoryUsage::CPU_READ | C2MemoryUsage::CPU_WRITE),
                                           static_cast<uint64_t>(BufferUsage::VIDEO_ENCODER)},
@@ -153,10 +153,10 @@ c2_status_t FormatConverter::initialize(media::VideoPixelFormat outFormat,
     mOutFormat = outFormat;
     mVisibleSize = visibleSize;
 
-    mTempPlaneU = std::unique_ptr<uint8_t[]>(
-            new uint8_t[mVisibleSize.width() * mVisibleSize.height() / 4]);
-    mTempPlaneV = std::unique_ptr<uint8_t[]>(
-            new uint8_t[mVisibleSize.width() * mVisibleSize.height() / 4]);
+    mTempPlaneU =
+            std::unique_ptr<uint8_t[]>(new uint8_t[mVisibleSize.width * mVisibleSize.height / 4]);
+    mTempPlaneV =
+            std::unique_ptr<uint8_t[]>(new uint8_t[mVisibleSize.width * mVisibleSize.height / 4]);
 
     return C2_OK;
 }
@@ -227,35 +227,35 @@ C2ConstGraphicBlock FormatConverter::convertBlock(uint64_t frameIndex,
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_YV12,
                         media::VideoPixelFormat::PIXEL_FORMAT_I420):
             libyuv::I420Copy(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dstY, dstStrideY,
-                             dstU, dstStrideU, dstV, dstStrideV, mVisibleSize.width(),
-                             mVisibleSize.height());
+                             dstU, dstStrideU, dstV, dstStrideV, mVisibleSize.width,
+                             mVisibleSize.height);
             break;
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_YV12,
                         media::VideoPixelFormat::PIXEL_FORMAT_NV12):
             libyuv::I420ToNV12(srcY, srcStrideY, srcU, srcStrideU, srcV, srcStrideV, dstY,
-                               dstStrideY, dstUV, dstStrideUV, mVisibleSize.width(),
-                               mVisibleSize.height());
+                               dstStrideY, dstUV, dstStrideUV, mVisibleSize.width,
+                               mVisibleSize.height);
             break;
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_NV12,
                         media::VideoPixelFormat::PIXEL_FORMAT_I420):
             libyuv::NV12ToI420(srcY, srcStrideY, srcU, srcStrideU, dstY, dstStrideY, dstU,
-                               dstStrideU, dstV, dstStrideV, mVisibleSize.width(),
-                               mVisibleSize.height());
+                               dstStrideU, dstV, dstStrideV, mVisibleSize.width,
+                               mVisibleSize.height);
             break;
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_NV21,
                         media::VideoPixelFormat::PIXEL_FORMAT_I420):
             libyuv::NV21ToI420(srcY, srcStrideY, srcV, srcStrideV, dstY, dstStrideY, dstU,
-                               dstStrideU, dstV, dstStrideV, mVisibleSize.width(),
-                               mVisibleSize.height());
+                               dstStrideU, dstV, dstStrideV, mVisibleSize.width,
+                               mVisibleSize.height);
             break;
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_NV21,
                         media::VideoPixelFormat::PIXEL_FORMAT_NV12):
-            libyuv::CopyPlane(srcY, srcStrideY, dstY, dstStrideY, mVisibleSize.width(),
-                              mVisibleSize.height());
-            copyPlaneByPixel(srcU, srcStrideU, 2, dstUV, dstStrideUV, 2, mVisibleSize.width() / 2,
-                             mVisibleSize.height() / 2);
-            copyPlaneByPixel(srcV, srcStrideV, 2, dstUV + 1, dstStrideUV, 2,
-                             mVisibleSize.width() / 2, mVisibleSize.height() / 2);
+            libyuv::CopyPlane(srcY, srcStrideY, dstY, dstStrideY, mVisibleSize.width,
+                              mVisibleSize.height);
+            copyPlaneByPixel(srcU, srcStrideU, 2, dstUV, dstStrideUV, 2, mVisibleSize.width / 2,
+                             mVisibleSize.height / 2);
+            copyPlaneByPixel(srcV, srcStrideV, 2, dstUV + 1, dstStrideUV, 2, mVisibleSize.width / 2,
+                             mVisibleSize.height / 2);
             break;
         default:
             ALOGE("Unsupported pixel format conversion from %s to %s",
@@ -277,20 +277,20 @@ C2ConstGraphicBlock FormatConverter::convertBlock(uint64_t frameIndex,
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_ABGR,
                         media::VideoPixelFormat::PIXEL_FORMAT_I420):
             libyuv::ABGRToI420(srcRGB, srcStrideRGB, dstY, dstStrideY, dstU, dstStrideU, dstV,
-                               dstStrideV, mVisibleSize.width(), mVisibleSize.height());
+                               dstStrideV, mVisibleSize.width, mVisibleSize.height);
             break;
         case convertMap(media::VideoPixelFormat::PIXEL_FORMAT_ABGR,
                         media::VideoPixelFormat::PIXEL_FORMAT_NV12): {
             // There is no libyuv function to convert ABGR to NV12. Therefore, we first convert to
             // I420 on dst-Y plane and temporary U/V plane. Then we copy U and V pixels from
             // temporary planes to dst-UV interleavedly.
-            const int tempStride = mVisibleSize.width() / 2;
+            const int tempStride = mVisibleSize.width / 2;
             libyuv::ABGRToI420(srcRGB, srcStrideRGB, dstY, dstStrideY, mTempPlaneU.get(),
-                               tempStride, mTempPlaneV.get(), tempStride, mVisibleSize.width(),
-                               mVisibleSize.height());
+                               tempStride, mTempPlaneV.get(), tempStride, mVisibleSize.width,
+                               mVisibleSize.height);
             libyuv::MergeUVPlane(mTempPlaneU.get(), tempStride, mTempPlaneV.get(), tempStride,
-                                 dstUV, dstStrideUV, mVisibleSize.width() / 2,
-                                 mVisibleSize.height() / 2);
+                                 dstUV, dstStrideUV, mVisibleSize.width / 2,
+                                 mVisibleSize.height / 2);
             break;
         }
         default:
@@ -310,7 +310,7 @@ C2ConstGraphicBlock FormatConverter::convertBlock(uint64_t frameIndex,
           media::VideoPixelFormatToString(inputFormat).c_str());
     entry->mAssociatedFrameIndex = frameIndex;
     mAvailableQueue.pop();
-    return outputBlock->share(C2Rect(mVisibleSize.width(), mVisibleSize.height()), C2Fence());
+    return outputBlock->share(C2Rect(mVisibleSize.width, mVisibleSize.height), C2Fence());
 }
 
 c2_status_t FormatConverter::returnBlock(uint64_t frameIndex) {

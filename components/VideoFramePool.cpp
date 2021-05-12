@@ -43,7 +43,7 @@ std::optional<uint32_t> VideoFramePool::getBufferIdFromGraphicBlock(C2BlockPool&
 
 // static
 c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount,
-                                                const media::Size& size, uint32_t format,
+                                                const ui::Size& size, uint32_t format,
                                                 C2MemoryUsage usage) {
     ALOGV("%s() blockPool.getAllocatorId() = %u", __func__, blockPool.getAllocatorId());
 
@@ -52,7 +52,7 @@ c2_status_t VideoFramePool::requestNewBufferSet(C2BlockPool& blockPool, int32_t 
         return bpPool->requestNewBufferSet(bufferCount);
     } else if (blockPool.getAllocatorId() == C2PlatformAllocatorStore::BUFFERQUEUE) {
         C2VdaBqBlockPool* bqPool = static_cast<C2VdaBqBlockPool*>(&blockPool);
-        return bqPool->requestNewBufferSet(bufferCount, size.width(), size.height(), format, usage);
+        return bqPool->requestNewBufferSet(bufferCount, size.width, size.height, format, usage);
     }
 
     ALOGE("%s(): unknown allocator ID: %u", __func__, blockPool.getAllocatorId());
@@ -72,7 +72,7 @@ bool VideoFramePool::setNotifyBlockAvailableCb(C2BlockPool& blockPool, ::base::O
 
 // static
 std::unique_ptr<VideoFramePool> VideoFramePool::Create(
-        std::shared_ptr<C2BlockPool> blockPool, const size_t numBuffers, const media::Size& size,
+        std::shared_ptr<C2BlockPool> blockPool, const size_t numBuffers, const ui::Size& size,
         HalPixelFormat pixelFormat, bool isSecure,
         scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
     ALOG_ASSERT(blockPool != nullptr);
@@ -97,7 +97,7 @@ std::unique_ptr<VideoFramePool> VideoFramePool::Create(
     return pool;
 }
 
-VideoFramePool::VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const media::Size& size,
+VideoFramePool::VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const ui::Size& size,
                                HalPixelFormat pixelFormat, C2MemoryUsage memoryUsage,
                                scoped_refptr<::base::SequencedTaskRunner> taskRunner)
       : mBlockPool(std::move(blockPool)),
@@ -105,7 +105,7 @@ VideoFramePool::VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const med
         mPixelFormat(pixelFormat),
         mMemoryUsage(memoryUsage),
         mClientTaskRunner(std::move(taskRunner)) {
-    ALOGV("%s(size=%dx%d)", __func__, size.width(), size.height());
+    ALOGV("%s(size=%dx%d)", __func__, size.width, size.height);
     ALOG_ASSERT(mClientTaskRunner->RunsTasksInCurrentSequence());
     DCHECK(mBlockPool);
     DCHECK(mClientTaskRunner);
@@ -180,9 +180,8 @@ void VideoFramePool::getVideoFrameTask() {
     static size_t sDelay = kFetchRetryDelayInit;
 
     std::shared_ptr<C2GraphicBlock> block;
-    c2_status_t err = mBlockPool->fetchGraphicBlock(mSize.width(), mSize.height(),
-                                                    static_cast<uint32_t>(mPixelFormat),
-                                                    mMemoryUsage, &block);
+    c2_status_t err = mBlockPool->fetchGraphicBlock(
+            mSize.width, mSize.height, static_cast<uint32_t>(mPixelFormat), mMemoryUsage, &block);
     if (err == C2_TIMED_OUT || err == C2_BLOCKING) {
         if (setNotifyBlockAvailableCb(*mBlockPool,
                                       ::base::BindOnce(&VideoFramePool::getVideoFrameTaskThunk,

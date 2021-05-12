@@ -28,10 +28,12 @@
 #include <base/bind.h>
 #include <base/numerics/safe_conversions.h>
 #include <base/posix/eintr_wrapper.h>
+#include <base/strings/stringprintf.h>
 #include <base/thread_annotations.h>
 #include <utils/Log.h>
 
 #include <color_plane_layout.h>
+#include <v4l2_codec2/common/Common.h>
 #include <video_pixel_format.h>
 
 // VP8 parsed frames
@@ -52,13 +54,13 @@
 namespace android {
 
 struct v4l2_format buildV4L2Format(const enum v4l2_buf_type type, uint32_t fourcc,
-                                   const media::Size& size, size_t buffer_size, uint32_t stride) {
+                                   const ui::Size& size, size_t buffer_size, uint32_t stride) {
     struct v4l2_format format;
     memset(&format, 0, sizeof(format));
     format.type = type;
     format.fmt.pix_mp.pixelformat = fourcc;
-    format.fmt.pix_mp.width = size.width();
-    format.fmt.pix_mp.height = size.height();
+    format.fmt.pix_mp.width = size.width;
+    format.fmt.pix_mp.height = size.height;
     format.fmt.pix_mp.num_planes = V4L2Device::getNumPlanesOfV4L2PixFmt(fourcc);
     format.fmt.pix_mp.plane_fmt[0].sizeimage = buffer_size;
 
@@ -719,7 +721,7 @@ V4L2Queue::~V4L2Queue() {
     std::move(mDestroyCb).Run();
 }
 
-std::optional<struct v4l2_format> V4L2Queue::setFormat(uint32_t fourcc, const media::Size& size,
+std::optional<struct v4l2_format> V4L2Queue::setFormat(uint32_t fourcc, const ui::Size& size,
                                                        size_t bufferSize, uint32_t stride) {
     struct v4l2_format format = buildV4L2Format(mType, fourcc, size, bufferSize, stride);
     if (mDevice->ioctl(VIDIOC_S_FMT, &format) != 0 || format.fmt.pix_mp.pixelformat != fourcc) {
@@ -731,7 +733,7 @@ std::optional<struct v4l2_format> V4L2Queue::setFormat(uint32_t fourcc, const me
     return mCurrentFormat;
 }
 
-std::optional<struct v4l2_format> V4L2Queue::tryFormat(uint32_t fourcc, const media::Size& size,
+std::optional<struct v4l2_format> V4L2Queue::tryFormat(uint32_t fourcc, const ui::Size& size,
                                                        size_t bufferSize) {
     struct v4l2_format format = buildV4L2Format(mType, fourcc, size, bufferSize, 0);
     if (mDevice->ioctl(VIDIOC_TRY_FMT, &format) != 0 || format.fmt.pix_mp.pixelformat != fourcc) {
@@ -1434,9 +1436,9 @@ int32_t V4L2Device::h264LevelIdcToV4L2H264Level(uint8_t levelIdc) {
 }
 
 // static
-media::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& format) {
-    media::Size codedSize;
-    media::Size visibleSize;
+ui::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& format) {
+    ui::Size codedSize;
+    ui::Size visibleSize;
     media::VideoPixelFormat frameFormat = media::PIXEL_FORMAT_UNKNOWN;
     size_t bytesPerLine = 0;
     // Total bytes in the frame.
@@ -1448,8 +1450,8 @@ media::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& fo
         for (size_t i = 0; i < format.fmt.pix_mp.num_planes; ++i) {
             sizeimage += base::checked_cast<int>(format.fmt.pix_mp.plane_fmt[i].sizeimage);
         }
-        visibleSize.SetSize(base::checked_cast<int>(format.fmt.pix_mp.width),
-                            base::checked_cast<int>(format.fmt.pix_mp.height));
+        visibleSize.set(base::checked_cast<int>(format.fmt.pix_mp.width),
+                        base::checked_cast<int>(format.fmt.pix_mp.height));
         const uint32_t pixFmt = format.fmt.pix_mp.pixelformat;
         const auto frameFourcc = media::Fourcc::FromV4L2PixFmt(pixFmt);
         if (!frameFourcc) {
@@ -1460,8 +1462,8 @@ media::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& fo
     } else {
         bytesPerLine = base::checked_cast<int>(format.fmt.pix.bytesperline);
         sizeimage = base::checked_cast<int>(format.fmt.pix.sizeimage);
-        visibleSize.SetSize(base::checked_cast<int>(format.fmt.pix.width),
-                            base::checked_cast<int>(format.fmt.pix.height));
+        visibleSize.set(base::checked_cast<int>(format.fmt.pix.width),
+                        base::checked_cast<int>(format.fmt.pix.height));
         const uint32_t fourcc = format.fmt.pix.pixelformat;
         const auto frameFourcc = media::Fourcc::FromV4L2PixFmt(fourcc);
         if (!frameFourcc) {
@@ -1499,8 +1501,8 @@ media::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& fo
     // Sizeimage is codedWidth * codedHeight * totalBpp.
     int codedHeight = sizeimage * 8 / codedWidth / totalBpp;
 
-    codedSize.SetSize(codedWidth, codedHeight);
-    ALOGV("codedSize=%s", codedSize.ToString().c_str());
+    codedSize.set(codedWidth, codedHeight);
+    ALOGV("codedSize=%s", toString(codedSize).c_str());
 
     // Sanity checks. Calculated coded size has to contain given visible size and fulfill buffer
     // byte size requirements.
@@ -1549,7 +1551,7 @@ std::string V4L2Device::v4L2FormatToString(const struct v4l2_format& format) {
     if (format.type == V4L2_BUF_TYPE_VIDEO_CAPTURE || format.type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
         //  single-planar
         const struct v4l2_pix_format& pix = format.fmt.pix;
-        s << ", width_height: " << media::Size(pix.width, pix.height).ToString()
+        s << ", width_height: " << toString(ui::Size(pix.width, pix.height))
           << ", pixelformat: " << media::FourccToString(pix.pixelformat) << ", field: " << pix.field
           << ", bytesperline: " << pix.bytesperline << ", sizeimage: " << pix.sizeimage;
     } else if (V4L2_TYPE_IS_MULTIPLANAR(format.type)) {
@@ -1557,7 +1559,7 @@ std::string V4L2Device::v4L2FormatToString(const struct v4l2_format& format) {
         // As long as num_planes's type is uint8_t, ostringstream treats it as a char instead of an
         // integer, which is not what we want. Casting pix_mp.num_planes unsigned int solves the
         // issue.
-        s << ", width_height: " << media::Size(pixMp.width, pixMp.height).ToString()
+        s << ", width_height: " << toString(ui::Size(pixMp.width, pixMp.height))
           << ", pixelformat: " << media::FourccToString(pixMp.pixelformat)
           << ", field: " << pixMp.field
           << ", num_planes: " << static_cast<unsigned int>(pixMp.num_planes);
@@ -1685,11 +1687,11 @@ std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
     constexpr size_t bufferAlignment = 0x1000;
     if (numBuffers == 1) {
         return media::VideoFrameLayout::CreateWithPlanes(videoFormat,
-                                                         media::Size(pixMp.width, pixMp.height),
+                                                         ui::Size(pixMp.width, pixMp.height),
                                                          std::move(planes), bufferAlignment);
     } else {
         return media::VideoFrameLayout::CreateMultiPlanar(videoFormat,
-                                                          media::Size(pixMp.width, pixMp.height),
+                                                          ui::Size(pixMp.width, pixMp.height),
                                                           std::move(planes), bufferAlignment);
     }
 }
@@ -1703,44 +1705,43 @@ size_t V4L2Device::getNumPlanesOfV4L2PixFmt(uint32_t pixFmt) {
     return 1u;
 }
 
-void V4L2Device::getSupportedResolution(uint32_t pixelFormat, media::Size* minResolution,
-                                        media::Size* maxResolution) {
-    maxResolution->SetSize(0, 0);
-    minResolution->SetSize(0, 0);
+void V4L2Device::getSupportedResolution(uint32_t pixelFormat, ui::Size* minResolution,
+                                        ui::Size* maxResolution) {
+    maxResolution->set(0, 0);
+    minResolution->set(0, 0);
     v4l2_frmsizeenum frameSize;
     memset(&frameSize, 0, sizeof(frameSize));
     frameSize.pixel_format = pixelFormat;
     for (; ioctl(VIDIOC_ENUM_FRAMESIZES, &frameSize) == 0; ++frameSize.index) {
         if (frameSize.type == V4L2_FRMSIZE_TYPE_DISCRETE) {
-            if (frameSize.discrete.width >= base::checked_cast<uint32_t>(maxResolution->width()) &&
-                frameSize.discrete.height >=
-                        base::checked_cast<uint32_t>(maxResolution->height())) {
-                maxResolution->SetSize(frameSize.discrete.width, frameSize.discrete.height);
+            if (frameSize.discrete.width >= base::checked_cast<uint32_t>(maxResolution->width) &&
+                frameSize.discrete.height >= base::checked_cast<uint32_t>(maxResolution->height)) {
+                maxResolution->set(frameSize.discrete.width, frameSize.discrete.height);
             }
-            if (minResolution->IsEmpty() ||
-                (frameSize.discrete.width <= base::checked_cast<uint32_t>(minResolution->width()) &&
+            if (isEmpty(*minResolution) ||
+                (frameSize.discrete.width <= base::checked_cast<uint32_t>(minResolution->width) &&
                  frameSize.discrete.height <=
-                         base::checked_cast<uint32_t>(minResolution->height()))) {
-                minResolution->SetSize(frameSize.discrete.width, frameSize.discrete.height);
+                         base::checked_cast<uint32_t>(minResolution->height))) {
+                minResolution->set(frameSize.discrete.width, frameSize.discrete.height);
             }
         } else if (frameSize.type == V4L2_FRMSIZE_TYPE_STEPWISE ||
                    frameSize.type == V4L2_FRMSIZE_TYPE_CONTINUOUS) {
-            maxResolution->SetSize(frameSize.stepwise.max_width, frameSize.stepwise.max_height);
-            minResolution->SetSize(frameSize.stepwise.min_width, frameSize.stepwise.min_height);
+            maxResolution->set(frameSize.stepwise.max_width, frameSize.stepwise.max_height);
+            minResolution->set(frameSize.stepwise.min_width, frameSize.stepwise.min_height);
             break;
         }
     }
-    if (maxResolution->IsEmpty()) {
-        maxResolution->SetSize(1920, 1088);
+    if (isEmpty(*maxResolution)) {
+        maxResolution->set(1920, 1088);
         ALOGE("GetSupportedResolution failed to get maximum resolution for fourcc %s, "
               "fall back to %s",
-              media::FourccToString(pixelFormat).c_str(), maxResolution->ToString().c_str());
+              media::FourccToString(pixelFormat).c_str(), toString(*maxResolution).c_str());
     }
-    if (minResolution->IsEmpty()) {
-        minResolution->SetSize(16, 16);
+    if (isEmpty(*minResolution)) {
+        minResolution->set(16, 16);
         ALOGE("GetSupportedResolution failed to get minimum resolution for fourcc %s, "
               "fall back to %s",
-              media::FourccToString(pixelFormat).c_str(), minResolution->ToString().c_str());
+              media::FourccToString(pixelFormat).c_str(), toString(*minResolution).c_str());
     }
 }
 
@@ -1820,9 +1821,8 @@ V4L2Device::SupportedDecodeProfiles V4L2Device::enumerateSupportedDecodeProfiles
             profiles.push_back(profile);
 
             ALOGV("Found decoder profile %s, resolutions: %s %s",
-                  GetProfileName(profile.profile).c_str(),
-                  profile.min_resolution.ToString().c_str(),
-                  profile.max_resolution.ToString().c_str());
+                  GetProfileName(profile.profile).c_str(), toString(profile.min_resolution).c_str(),
+                  toString(profile.max_resolution).c_str());
         }
     }
 
@@ -1839,7 +1839,7 @@ V4L2Device::SupportedEncodeProfiles V4L2Device::enumerateSupportedEncodeProfiles
         SupportedEncodeProfile profile;
         profile.max_framerate_numerator = 30;
         profile.max_framerate_denominator = 1;
-        media::Size minResolution;
+        ui::Size minResolution;
         getSupportedResolution(pixelformat, &minResolution, &profile.max_resolution);
 
         const auto videoCodecProfiles = v4L2PixFmtToVideoCodecProfiles(pixelformat, true);
@@ -1850,7 +1850,7 @@ V4L2Device::SupportedEncodeProfiles V4L2Device::enumerateSupportedEncodeProfiles
 
             ALOGV("Found encoder profile %s, max resolution: %s",
                   GetProfileName(profile.profile).c_str(),
-                  profile.max_resolution.ToString().c_str());
+                  toString(profile.max_resolution).c_str());
         }
     }
 

@@ -21,7 +21,7 @@
 #include <vector>
 
 #include "base/memory/ref_counted.h"
-#include "size.h"
+#include "ui/Size.h"
 #include "video_frame_layout.h"
 #include "video_pixel_format.h"
 
@@ -44,13 +44,13 @@ class VideoFrame : public base::RefCountedThreadSafe<VideoFrame> {
 
   // Returns the required allocation size for a (tightly packed) frame of the
   // given coded size and format.
-  static size_t AllocationSize(VideoPixelFormat format, const Size& coded_size);
+  static size_t AllocationSize(VideoPixelFormat format, const android::ui::Size& coded_size);
 
   // Returns the plane Size (in bytes) for a plane of the given coded size
   // and format.
-  static Size PlaneSize(VideoPixelFormat format,
+  static android::ui::Size PlaneSize(VideoPixelFormat format,
                         size_t plane,
-                        const Size& coded_size);
+                        const android::ui::Size& coded_size);
 
   // Returns horizontal bits per pixel for given |plane| and |format|.
   static int PlaneHorizontalBitsPerPixel(VideoPixelFormat format, size_t plane);
@@ -69,7 +69,7 @@ class VideoFrame : public base::RefCountedThreadSafe<VideoFrame> {
 
   // Returns the pixel size of each subsample for a given |plane| and |format|.
   // E.g. 2x2 for the U-plane in PIXEL_FORMAT_I420.
-  static Size SampleSize(VideoPixelFormat format, size_t plane);
+  static android::ui::Size SampleSize(VideoPixelFormat format, size_t plane);
 };
 
 }  // namespace media

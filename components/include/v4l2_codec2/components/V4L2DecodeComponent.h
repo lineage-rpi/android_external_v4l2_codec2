@@ -70,7 +70,7 @@ private:
     // Try to process pending works at |mPendingWorks|. Paused when |mIsDraining| is set.
     void pumpPendingWorks();
     // Get the buffer pool.
-    std::unique_ptr<VideoFramePool> getVideoFramePool(const media::Size& size,
+    std::unique_ptr<VideoFramePool> getVideoFramePool(const ui::Size& size,
                                                       HalPixelFormat pixelFormat,
                                                       size_t numBuffers);
     // Detect and report works with no-show frame, only used at VP8 and VP9.

@@ -36,9 +36,9 @@ constexpr int k1440PSizeInPixels = 2560 * 1440;
 // Use quadruple size of kMaxBitstreamBufferSizeInBytes when the input frame size is larger than
 // 1440p, double if larger than 1080p. This is chosen empirically for some 4k encoding use cases and
 // the Android CTS VideoEncoderTest (crbug.com/927284).
-size_t GetMaxOutputBufferSize(const media::Size& size) {
-    if (size.GetArea() > k1440PSizeInPixels) return kMaxBitstreamBufferSizeInBytes * 4;
-    if (size.GetArea() > k1080PSizeInPixels) return kMaxBitstreamBufferSizeInBytes * 2;
+size_t GetMaxOutputBufferSize(const ui::Size& size) {
+    if (getArea(size) > k1440PSizeInPixels) return kMaxBitstreamBufferSizeInBytes * 4;
+    if (getArea(size) > k1080PSizeInPixels) return kMaxBitstreamBufferSizeInBytes * 2;
     return kMaxBitstreamBufferSizeInBytes;
 }
 
@@ -52,7 +52,7 @@ size_t GetMaxOutputBufferSize(const media::Size& size) {
 // static
 std::unique_ptr<VideoEncoder> V4L2Encoder::create(
         media::VideoCodecProfile outputProfile, std::optional<uint8_t> level,
-        const media::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
+        const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
         FetchOutputBufferCB fetchOutputBufferCb, InputBufferDoneCB inputBufferDoneCb,
         OutputBufferDoneCB outputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb,
         scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
@@ -189,7 +189,7 @@ media::VideoPixelFormat V4L2Encoder::inputFormat() const {
 }
 
 bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::optional<uint8_t> level,
-                             const media::Size& visibleSize, uint32_t stride,
+                             const ui::Size& visibleSize, uint32_t stride,
                              uint32_t keyFramePeriod) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
@@ -437,7 +437,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState == State::UNINITIALIZED);
     ALOG_ASSERT(!mInputQueue->isStreaming());
-    ALOG_ASSERT(!mVisibleSize.IsEmpty());
+    ALOG_ASSERT(!isEmpty(mVisibleSize));
 
     // First try to use the requested pixel format directly.
     std::optional<struct v4l2_format> format;
@@ -472,10 +472,10 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     }
 
     mInputLayout = layout.value();
-    if (!contains(Rect(mInputLayout->coded_size().width(), mInputLayout->coded_size().height()),
-                  Rect(mVisibleSize.width(), mVisibleSize.height()))) {
+    if (!contains(Rect(mInputLayout->coded_size().width, mInputLayout->coded_size().height),
+                  Rect(mVisibleSize.width, mVisibleSize.height))) {
         ALOGE("Input size %s exceeds encoder capability, encoder can handle %s",
-              mVisibleSize.ToString().c_str(), mInputLayout->coded_size().ToString().c_str());
+              toString(mVisibleSize).c_str(), toString(mInputLayout->coded_size()).c_str());
         return false;
     }
 
@@ -498,7 +498,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     // The coded input size might be different from the visible size due to alignment requirements,
     // So we need to specify the visible rectangle. Note that this rectangle might still be adjusted
     // due to hardware limitations.
-    Rect visibleRectangle(mVisibleSize.width(), mVisibleSize.height());
+    Rect visibleRectangle(mVisibleSize.width, mVisibleSize.height);
 
     struct v4l2_rect rect;
     memset(&rect, 0, sizeof(rect));
@@ -536,10 +536,10 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
 
     ALOGV("Input format set to %s (size: %s, adjusted size: %dx%d, coded size: %s)",
           media::VideoPixelFormatToString(mInputLayout->format()).c_str(),
-          mVisibleSize.ToString().c_str(), visibleRectangle.width(), visibleRectangle.height(),
-          mInputCodedSize.ToString().c_str());
+          toString(mVisibleSize).c_str(), visibleRectangle.width(), visibleRectangle.height(),
+          toString(mInputCodedSize).c_str());
 
-    mVisibleSize.SetSize(visibleRectangle.width(), visibleRectangle.height());
+    mVisibleSize.set(visibleRectangle.width(), visibleRectangle.height());
     return true;
 }
 
@@ -548,7 +548,7 @@ bool V4L2Encoder::configureOutputFormat(media::VideoCodecProfile outputProfile) 
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState == State::UNINITIALIZED);
     ALOG_ASSERT(!mOutputQueue->isStreaming());
-    ALOG_ASSERT(!mVisibleSize.IsEmpty());
+    ALOG_ASSERT(!isEmpty(mVisibleSize));
 
     auto format =
             mOutputQueue->setFormat(V4L2Device::videoCodecProfileToV4L2PixFmt(outputProfile, false),
@@ -731,7 +731,8 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
             bytesUsed = media::VideoFrame::AllocationSize(format, mInputLayout->coded_size());
         } else {
             bytesUsed = ::base::checked_cast<size_t>(
-                    media::VideoFrame::PlaneSize(format, i, mInputLayout->coded_size()).GetArea());
+                    getArea(media::VideoFrame::PlaneSize(format, i, mInputLayout->coded_size()))
+                            .value());
         }
 
         // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined

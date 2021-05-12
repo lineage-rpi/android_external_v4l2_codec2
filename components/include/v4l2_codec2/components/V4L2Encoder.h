@@ -13,8 +13,8 @@
 
 #include <base/memory/weak_ptr.h>
 #include <base/sequenced_task_runner.h>
+#include <ui/Size.h>
 
-#include <size.h>
 #include <v4l2_codec2/components/VideoEncoder.h>
 #include <video_codecs.h>
 #include <video_frame_layout.h>
@@ -34,7 +34,7 @@ public:
 
     static std::unique_ptr<VideoEncoder> create(
             media::VideoCodecProfile profile, std::optional<uint8_t> level,
-            const media::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
+            const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
             FetchOutputBufferCB fetchOutputBufferCb, InputBufferDoneCB inputBufferDoneCb,
             OutputBufferDoneCB outputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb,
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
@@ -49,8 +49,8 @@ public:
     void requestKeyframe() override;
 
     media::VideoPixelFormat inputFormat() const override;
-    const media::Size& visibleSize() const override { return mVisibleSize; }
-    const media::Size& codedSize() const override { return mInputCodedSize; }
+    const ui::Size& visibleSize() const override { return mVisibleSize; }
+    const ui::Size& codedSize() const override { return mInputCodedSize; }
 
 private:
     // Possible encoder states.
@@ -81,7 +81,7 @@ private:
 
     // Initialize the V4L2 encoder for specified parameters.
     bool initialize(media::VideoCodecProfile outputProfile, std::optional<uint8_t> level,
-                    const media::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod);
+                    const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod);
 
     // Handle the next encode request on the queue.
     void handleEncodeRequest();
@@ -146,9 +146,9 @@ private:
     std::queue<EncodeRequest> mEncodeRequests;
 
     // The video stream's visible size.
-    media::Size mVisibleSize;
+    ui::Size mVisibleSize;
     // The video stream's coded size.
-    media::Size mInputCodedSize;
+    ui::Size mInputCodedSize;
     // The input layout configured on the V4L2 device.
     std::optional<media::VideoFrameLayout> mInputLayout;
     // Required output buffer byte size.
