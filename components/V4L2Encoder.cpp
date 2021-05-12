@@ -501,6 +501,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     media::Rect visibleRectangle(mVisibleSize.width(), mVisibleSize.height());
 
     struct v4l2_rect rect;
+    memset(&rect, 0, sizeof(rect));
     rect.left = visibleRectangle.x();
     rect.top = visibleRectangle.y();
     rect.width = visibleRectangle.width();
