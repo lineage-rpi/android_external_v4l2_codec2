@@ -15,8 +15,8 @@
 #include <base/sequenced_task_runner.h>
 #include <ui/Size.h>
 
+#include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/components/VideoEncoder.h>
-#include <video_frame_layout.h>
 
 namespace android {
 
@@ -149,7 +149,7 @@ private:
     // The video stream's coded size.
     ui::Size mInputCodedSize;
     // The input layout configured on the V4L2 device.
-    std::optional<media::VideoFrameLayout> mInputLayout;
+    std::optional<VideoFrameLayout> mInputLayout;
     // Required output buffer byte size.
     uint32_t mOutputBufferSize = 0;
 

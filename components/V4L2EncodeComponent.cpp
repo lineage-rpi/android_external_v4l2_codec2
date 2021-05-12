@@ -125,7 +125,8 @@ std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGra
 
     std::vector<VideoFramePlane> planes;
     for (uint32_t i = 0; i < layout.rootPlanes; ++i) {
-        planes.push_back({offsets[i], strides[i]});
+        // The mSize field is not used in our case, so we can safely set it to zero.
+        planes.push_back({strides[i], offsets[i], 0});
     }
     return planes;
 }
