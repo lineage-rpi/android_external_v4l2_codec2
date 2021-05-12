@@ -13,7 +13,8 @@
 
 #include <ui/Rect.h>
 #include <ui/Size.h>
-#include <video_pixel_format.h>
+
+#include <v4l2_codec2/common/VideoPixelFormat.h>
 
 namespace android {
 
