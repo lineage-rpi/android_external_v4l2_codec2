@@ -24,6 +24,7 @@
 #include <log/log.h>
 #include <media/stagefright/foundation/ColorUtils.h>
 
+#include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/NalParser.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
@@ -230,7 +231,7 @@ void V4L2DecodeComponent::startTask(c2_status_t* status, ::base::WaitableEvent* 
     *status = C2_OK;
 }
 
-std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const media::Size& size,
+std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const ui::Size& size,
                                                                        HalPixelFormat pixelFormat,
                                                                        size_t numBuffers) {
     ALOGV("%s()", __func__);
@@ -244,9 +245,9 @@ std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const med
 
     // (b/157113946): Prevent malicious dynamic resolution change exhausts system memory.
     constexpr int kMaximumSupportedArea = 4096 * 4096;
-    if (size.GetCheckedArea().ValueOrDefault(INT_MAX) > kMaximumSupportedArea) {
-        ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width(),
-              size.height());
+    if (getArea(size).value_or(INT_MAX) > kMaximumSupportedArea) {
+        ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width,
+              size.height);
         reportError(C2_BAD_VALUE);
         return nullptr;
     }

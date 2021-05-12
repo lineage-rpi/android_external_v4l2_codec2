@@ -10,7 +10,7 @@
 #include <vector>
 
 #include <C2Buffer.h>
-#include <size.h>
+#include <ui/Size.h>
 #include <utils/StrongPointer.h>
 #include <video_pixel_format.h>
 
@@ -51,9 +51,8 @@ public:
     // Create FormatConverter instance and initialize it, nullptr will be returned on
     // initialization error.
     static std::unique_ptr<FormatConverter> Create(media::VideoPixelFormat outFormat,
-                                                        const media::Size& visibleSize,
-                                                        uint32_t inputCount,
-                                                        const media::Size& codedSize);
+                                                   const ui::Size& visibleSize, uint32_t inputCount,
+                                                   const ui::Size& codedSize);
 
     // Convert the input block into the alternative block with required pixel format and return it,
     // or return the original block if zero-copy is applied.
@@ -93,8 +92,8 @@ private:
 
     // Initialize foramt converter. It will pre-allocate a set of graphic blocks as |codedSize| and
     // |outFormat|. This function should be called prior to other functions.
-    c2_status_t initialize(media::VideoPixelFormat outFormat, const media::Size& visibleSize,
-                           uint32_t inputCount, const media::Size& codedSize);
+    c2_status_t initialize(media::VideoPixelFormat outFormat, const ui::Size& visibleSize,
+                           uint32_t inputCount, const ui::Size& codedSize);
 
     // The array of block entries.
     std::vector<std::unique_ptr<BlockEntry>> mGraphicBlocks;
@@ -107,7 +106,7 @@ private:
     std::unique_ptr<uint8_t[]> mTempPlaneV;
 
     media::VideoPixelFormat mOutFormat = media::VideoPixelFormat::PIXEL_FORMAT_UNKNOWN;
-    media::Size mVisibleSize;
+    ui::Size mVisibleSize;
 };
 
 }  // namespace android

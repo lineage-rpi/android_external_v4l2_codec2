@@ -162,7 +162,7 @@ bool V4L2Decoder::setupInputFormat(const uint32_t inputPixelFormat, const size_t
     }
 
     // Setup the input format.
-    auto format = mInputQueue->setFormat(inputPixelFormat, media::Size(), inputBufferSize, 0);
+    auto format = mInputQueue->setFormat(inputPixelFormat, ui::Size(), inputBufferSize, 0);
     if (!format) {
         ALOGE("Failed to call IOCTL to set input format.");
         return false;
@@ -489,12 +489,12 @@ bool V4L2Decoder::changeResolution() {
         return false;
     }
 
-    mCodedSize.SetSize(format->fmt.pix_mp.width, format->fmt.pix_mp.height);
+    mCodedSize.set(format->fmt.pix_mp.width, format->fmt.pix_mp.height);
     mVisibleRect = getVisibleRect(mCodedSize);
 
     ALOGI("Need %zu output buffers. coded size: %s, visible rect: %s", *numOutputBuffers,
-          mCodedSize.ToString().c_str(), toString(mVisibleRect).c_str());
-    if (mCodedSize.IsEmpty()) {
+          toString(mCodedSize).c_str(), toString(mVisibleRect).c_str());
+    if (isEmpty(mCodedSize)) {
         ALOGE("Failed to get resolution from V4L2 driver.");
         return false;
     }
@@ -519,7 +519,7 @@ bool V4L2Decoder::changeResolution() {
     // Always use fexible pixel 420 format YCBCR_420_888 in Android.
     mVideoFramePool = mGetPoolCb.Run(mCodedSize, HalPixelFormat::YCBCR_420_888, *numOutputBuffers);
     if (!mVideoFramePool) {
-        ALOGE("Failed to get block pool with size: %s", mCodedSize.ToString().c_str());
+        ALOGE("Failed to get block pool with size: %s", toString(mCodedSize).c_str());
         return false;
     }
 
@@ -638,7 +638,7 @@ std::optional<struct v4l2_format> V4L2Decoder::getFormatInfo() {
     return format;
 }
 
-Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
+Rect V4L2Decoder::getVisibleRect(const ui::Size& codedSize) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
@@ -659,7 +659,7 @@ Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
 
         if (mDevice->ioctl(VIDIOC_G_CROP, &crop_arg) != 0) {
             ALOGW("ioctl() VIDIOC_G_CROP failed");
-            return Rect(codedSize.width(), codedSize.height());
+            return Rect(codedSize.width, codedSize.height);
         }
         visible_rect = &crop_arg.c;
     }
@@ -667,14 +667,14 @@ Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
     Rect rect(visible_rect->left, visible_rect->top, visible_rect->left + visible_rect->width,
               visible_rect->top + visible_rect->height);
     ALOGV("visible rectangle is %s", toString(rect).c_str());
-    if (!contains(Rect(codedSize.width(), codedSize.height()), rect)) {
+    if (!contains(Rect(codedSize.width, codedSize.height), rect)) {
         ALOGW("visible rectangle %s is not inside coded size %s", toString(rect).c_str(),
-              codedSize.ToString().c_str());
-        return Rect(codedSize.width(), codedSize.height());
+              toString(codedSize).c_str());
+        return Rect(codedSize.width, codedSize.height);
     }
     if (rect.isEmpty()) {
         ALOGW("visible size is empty");
-        return Rect(codedSize.width(), codedSize.height());
+        return Rect(codedSize.width, codedSize.height);
     }
 
     return rect;

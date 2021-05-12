@@ -7,8 +7,8 @@
 
 #include <C2Config.h>
 #include <system/graphics.h>
+#include <ui/Size.h>
 
-#include <size.h>
 #include <video_codecs.h>
 #include <video_pixel_format.h>
 
@@ -29,7 +29,7 @@ struct VideoEncoderAcceleratorConfig {
     };
 
     media::VideoPixelFormat mInputFormat;
-    media::Size mInputVisibleSize;
+    ui::Size mInputVisibleSize;
     media::VideoCodecProfile mOutputProfile;
     uint32_t mInitialBitrate;
     uint32_t mInitialFramerate;

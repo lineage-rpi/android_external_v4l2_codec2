@@ -9,9 +9,9 @@
 #include <string>
 
 #include <C2Config.h>
+#include <ui/Size.h>
 #include <util/C2InterfaceHelper.h>
 
-#include <size.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 
 namespace android {
