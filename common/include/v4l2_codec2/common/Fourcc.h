@@ -10,7 +10,7 @@
 #include <optional>
 #include <string>
 
-#include <video_pixel_format.h>
+#include <v4l2_codec2/common/VideoPixelFormat.h>
 
 namespace android {
 
