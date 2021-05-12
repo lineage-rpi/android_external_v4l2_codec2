@@ -10,12 +10,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <optional>
 #include <ostream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "base/optional.h"
 #include "color_plane_layout.h"
 #include "size.h"
 #include "video_pixel_format.h"
@@ -59,13 +59,13 @@ class VideoFrameLayout {
   // Create a layout suitable for |format| at |coded_size|. The stride, offsets
   // and size of all planes are set to 0, since that information cannot reliably
   // be infered from the arguments.
-  static base::Optional<VideoFrameLayout> Create(VideoPixelFormat format,
+  static std::optional<VideoFrameLayout> Create(VideoPixelFormat format,
                                                  const Size& coded_size);
 
   // Create a layout suitable for |format| at |coded_size|, with the |strides|
   // for each plane specified. The offsets and size of all planes are set to 0.
   // The size of |strides| must be equal to NumPlanes(|format|).
-  static base::Optional<VideoFrameLayout> CreateWithStrides(
+  static std::optional<VideoFrameLayout> CreateWithStrides(
       VideoPixelFormat format,
       const Size& coded_size,
       std::vector<int32_t> strides);
@@ -73,7 +73,7 @@ class VideoFrameLayout {
   // Create a layout suitable for |format| at |coded_size|, with the |planes|
   // fully provided.
   // The size of |planes| must be equal to NumPlanes(|format|).
-  static base::Optional<VideoFrameLayout> CreateWithPlanes(
+  static std::optional<VideoFrameLayout> CreateWithPlanes(
       VideoPixelFormat format,
       const Size& coded_size,
       std::vector<ColorPlaneLayout> planes,
@@ -83,7 +83,7 @@ class VideoFrameLayout {
   // This constructor should be called for situations where the frames using
   // this format are backed by multiple physical buffers, instead of having each
   // plane at different offsets of the same buffer. Currently only used by V4L2.
-  static base::Optional<VideoFrameLayout> CreateMultiPlanar(
+  static std::optional<VideoFrameLayout> CreateMultiPlanar(
       VideoPixelFormat format,
       const Size& coded_size,
       std::vector<ColorPlaneLayout> planes,

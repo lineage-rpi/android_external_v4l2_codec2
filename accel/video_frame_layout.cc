@@ -86,7 +86,7 @@ size_t VideoFrameLayout::NumPlanes(VideoPixelFormat format) {
 }
 
 // static
-base::Optional<VideoFrameLayout> VideoFrameLayout::Create(
+std::optional<VideoFrameLayout> VideoFrameLayout::Create(
     VideoPixelFormat format,
     const Size& coded_size) {
   return CreateWithStrides(format, coded_size,
@@ -94,7 +94,7 @@ base::Optional<VideoFrameLayout> VideoFrameLayout::Create(
 }
 
 // static
-base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
+std::optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
     VideoPixelFormat format,
     const Size& coded_size,
     std::vector<int32_t> strides) {
@@ -102,7 +102,7 @@ base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithStrides(
 }
 
 // static
-base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
+std::optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
     VideoPixelFormat format,
     const Size& coded_size,
     std::vector<ColorPlaneLayout> planes,
@@ -118,7 +118,7 @@ base::Optional<VideoFrameLayout> VideoFrameLayout::CreateWithPlanes(
                           modifier);
 }
 
-base::Optional<VideoFrameLayout> VideoFrameLayout::CreateMultiPlanar(
+std::optional<VideoFrameLayout> VideoFrameLayout::CreateMultiPlanar(
     VideoPixelFormat format,
     const Size& coded_size,
     std::vector<ColorPlaneLayout> planes,

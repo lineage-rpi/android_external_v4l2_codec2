@@ -3,138 +3,128 @@
 // found in the LICENSE file.
 // Note: ported from Chromium commit head: 22d34680c8ac
 
-#include "v4l2_codec2/common/V4L2DevicePoller.h"
+#include <v4l2_codec2/common/V4L2DevicePoller.h>
 
 #include <string>
 
-#include "base/bind.h"
-#include "base/threading/sequenced_task_runner_handle.h"
-#include "base/threading/thread_checker.h"
+#include <base/bind.h>
+#include <base/threading/sequenced_task_runner_handle.h>
+#include <base/threading/thread_checker.h>
+#include <log/log.h>
 
-#include "macros.h"
-#include "v4l2_codec2/common/V4L2Device.h"
+#include <v4l2_codec2/common/V4L2Device.h>
 
-namespace media {
+namespace android {
 
-V4L2DevicePoller::V4L2DevicePoller(V4L2Device* const device,
-                                   const std::string& thread_name)
-    : device_(device),
-      poll_thread_(std::move(thread_name)),
-      trigger_poll_(base::WaitableEvent::ResetPolicy::AUTOMATIC,
-                    base::WaitableEvent::InitialState::NOT_SIGNALED),
-      stop_polling_(false) {
-  DETACH_FROM_SEQUENCE(client_sequence_checker_);
-}
+V4L2DevicePoller::V4L2DevicePoller(V4L2Device* const device, const std::string& threadName)
+      : mDevice(device),
+        mPollThread(std::move(threadName)),
+        mTriggerPoll(base::WaitableEvent::ResetPolicy::AUTOMATIC,
+                     base::WaitableEvent::InitialState::NOT_SIGNALED),
+        mStopPolling(false) {}
 
 V4L2DevicePoller::~V4L2DevicePoller() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
+    ALOG_ASSERT(mClientTaskTunner->RunsTasksInCurrentSequence());
 
-  StopPolling();
+    stopPolling();
 }
 
-bool V4L2DevicePoller::StartPolling(EventCallback event_callback,
-                                    base::RepeatingClosure error_callback) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
+bool V4L2DevicePoller::startPolling(EventCallback eventCallback,
+                                    base::RepeatingClosure errorCallback) {
+    if (isPolling()) return true;
 
-  if (IsPolling())
-    return true;
+    ALOGV("Starting polling");
 
-  DVLOGF(4) << "Starting polling";
+    mClientTaskTunner = base::SequencedTaskRunnerHandle::Get();
+    mErrorCallback = errorCallback;
 
-  client_task_runner_ = base::SequencedTaskRunnerHandle::Get();
-  error_callback_ = error_callback;
-
-  if (!poll_thread_.Start()) {
-    VLOGF(1) << "Failed to start device poll thread";
-    return false;
-  }
-
-  event_callback_ = std::move(event_callback);
-
-  stop_polling_.store(false);
-  poll_thread_.task_runner()->PostTask(
-      FROM_HERE, base::BindOnce(&V4L2DevicePoller::DevicePollTask,
-                                base::Unretained(this)));
-
-  DVLOGF(3) << "Polling thread started";
-
-  SchedulePoll();
-
-  return true;
-}
-
-bool V4L2DevicePoller::StopPolling() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
-
-  if (!IsPolling())
-    return true;
-
-  DVLOGF(4) << "Stopping polling";
-
-  stop_polling_.store(true);
-
-  trigger_poll_.Signal();
-
-  if (!device_->SetDevicePollInterrupt()) {
-    VLOGF(1) << "Failed to interrupt device poll.";
-    return false;
-  }
-
-  DVLOGF(3) << "Stop device poll thread";
-  poll_thread_.Stop();
-
-  if (!device_->ClearDevicePollInterrupt()) {
-    VLOGF(1) << "Failed to clear interrupting device poll.";
-    return false;
-  }
-
-  DVLOGF(4) << "Polling thread stopped";
-
-  return true;
-}
-
-bool V4L2DevicePoller::IsPolling() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
-
-  return poll_thread_.IsRunning();
-}
-
-void V4L2DevicePoller::SchedulePoll() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(client_sequence_checker_);
-
-  // A call to DevicePollTask() will be posted when we actually start polling.
-  if (!IsPolling())
-    return;
-
-  DVLOGF(4) << "Scheduling poll";
-
-  trigger_poll_.Signal();
-}
-
-void V4L2DevicePoller::DevicePollTask() {
-  DCHECK(poll_thread_.task_runner()->RunsTasksInCurrentSequence());
-
-  while (true) {
-    DVLOGF(4) << "Waiting for poll to be scheduled.";
-    trigger_poll_.Wait();
-
-    if (stop_polling_) {
-      DVLOGF(4) << "Poll stopped, exiting.";
-      break;
+    if (!mPollThread.Start()) {
+        ALOGE("Failed to start device poll thread");
+        return false;
     }
 
-    bool event_pending = false;
-    DVLOGF(4) << "Polling device.";
-    if (!device_->Poll(true, &event_pending)) {
-      VLOGF(1) << "An error occurred while polling, calling error callback";
-      client_task_runner_->PostTask(FROM_HERE, error_callback_);
-      return;
-    }
+    mEventCallback = std::move(eventCallback);
 
-    DVLOGF(4) << "Poll returned, calling event callback.";
-    client_task_runner_->PostTask(FROM_HERE,
-                                  base::Bind(event_callback_, event_pending));
-  }
+    mStopPolling.store(false);
+    mPollThread.task_runner()->PostTask(
+            FROM_HERE, base::BindOnce(&V4L2DevicePoller::devicePollTask, base::Unretained(this)));
+
+    ALOGV("Polling thread started");
+
+    schedulePoll();
+
+    return true;
 }
 
-}  // namespace media
+bool V4L2DevicePoller::stopPolling() {
+    ALOG_ASSERT(mClientTaskTunner->RunsTasksInCurrentSequence());
+
+    if (!isPolling()) return true;
+
+    ALOGV("Stopping polling");
+
+    mStopPolling.store(true);
+
+    mTriggerPoll.Signal();
+
+    if (!mDevice->setDevicePollInterrupt()) {
+        ALOGE("Failed to interrupt device poll.");
+        return false;
+    }
+
+    ALOGV("Stop device poll thread");
+    mPollThread.Stop();
+
+    if (!mDevice->clearDevicePollInterrupt()) {
+        ALOGE("Failed to clear interrupting device poll.");
+        return false;
+    }
+
+    ALOGV("Polling thread stopped");
+
+    return true;
+}
+
+bool V4L2DevicePoller::isPolling() const {
+    ALOG_ASSERT(mClientTaskTunner->RunsTasksInCurrentSequence());
+
+    return mPollThread.IsRunning();
+}
+
+void V4L2DevicePoller::schedulePoll() {
+    ALOG_ASSERT(mClientTaskTunner->RunsTasksInCurrentSequence());
+
+    // A call to DevicePollTask() will be posted when we actually start polling.
+    if (!isPolling()) return;
+
+    ALOGV("Scheduling poll");
+
+    mTriggerPoll.Signal();
+}
+
+void V4L2DevicePoller::devicePollTask() {
+    ALOG_ASSERT(mClientTaskTunner->RunsTasksInCurrentSequence());
+
+    while (true) {
+        ALOGV("Waiting for poll to be scheduled.");
+        mTriggerPoll.Wait();
+
+        if (mStopPolling) {
+            ALOGV("Poll stopped, exiting.");
+            break;
+        }
+
+        bool event_pending = false;
+        ALOGV("Polling device.");
+        if (!mDevice->poll(true, &event_pending)) {
+            ALOGE("An error occurred while polling, calling error callback");
+            mClientTaskTunner->PostTask(FROM_HERE, mErrorCallback);
+            return;
+        }
+
+        ALOGV("Poll returned, calling event callback.");
+        mClientTaskTunner->PostTask(FROM_HERE, base::Bind(mEventCallback, event_pending));
+    }
+}
+
+}  // namespace android
