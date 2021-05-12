@@ -20,7 +20,7 @@ cc_library {
         "video_pixel_format.cc",
     ],
 
-    shared_libs: ["libchrome"],
+    shared_libs: ["libchrome", "liblog"],
     // -Wno-unused-parameter is needed for libchrome/base codes
     cflags: [
         "-Wall",
