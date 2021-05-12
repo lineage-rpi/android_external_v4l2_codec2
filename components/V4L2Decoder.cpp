@@ -16,6 +16,8 @@
 #include <base/memory/ptr_util.h>
 #include <log/log.h>
 
+#include <v4l2_codec2/common/Common.h>
+
 namespace android {
 namespace {
 
@@ -491,7 +493,7 @@ bool V4L2Decoder::changeResolution() {
     mVisibleRect = getVisibleRect(mCodedSize);
 
     ALOGI("Need %zu output buffers. coded size: %s, visible rect: %s", *numOutputBuffers,
-          mCodedSize.ToString().c_str(), mVisibleRect.ToString().c_str());
+          mCodedSize.ToString().c_str(), toString(mVisibleRect).c_str());
     if (mCodedSize.IsEmpty()) {
         ALOGE("Failed to get resolution from V4L2 driver.");
         return false;
@@ -636,7 +638,7 @@ std::optional<struct v4l2_format> V4L2Decoder::getFormatInfo() {
     return format;
 }
 
-media::Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
+Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
@@ -657,22 +659,22 @@ media::Rect V4L2Decoder::getVisibleRect(const media::Size& codedSize) {
 
         if (mDevice->ioctl(VIDIOC_G_CROP, &crop_arg) != 0) {
             ALOGW("ioctl() VIDIOC_G_CROP failed");
-            return media::Rect(codedSize);
+            return Rect(codedSize.width(), codedSize.height());
         }
         visible_rect = &crop_arg.c;
     }
 
-    media::Rect rect(visible_rect->left, visible_rect->top, visible_rect->width,
-                     visible_rect->height);
-    ALOGV("visible rectangle is %s", rect.ToString().c_str());
-    if (!media::Rect(codedSize).Contains(rect)) {
-        ALOGW("visible rectangle %s is not inside coded size %s", rect.ToString().c_str(),
+    Rect rect(visible_rect->left, visible_rect->top, visible_rect->left + visible_rect->width,
+              visible_rect->top + visible_rect->height);
+    ALOGV("visible rectangle is %s", toString(rect).c_str());
+    if (!contains(Rect(codedSize.width(), codedSize.height()), rect)) {
+        ALOGW("visible rectangle %s is not inside coded size %s", toString(rect).c_str(),
               codedSize.ToString().c_str());
-        return media::Rect(codedSize);
+        return Rect(codedSize.width(), codedSize.height());
     }
-    if (rect.IsEmpty()) {
+    if (rect.isEmpty()) {
         ALOGW("visible size is empty");
-        return media::Rect(codedSize);
+        return Rect(codedSize.width(), codedSize.height());
     }
 
     return rect;
