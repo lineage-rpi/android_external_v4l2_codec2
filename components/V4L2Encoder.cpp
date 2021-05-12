@@ -441,9 +441,9 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
 
     // First try to use the requested pixel format directly.
     std::optional<struct v4l2_format> format;
-    auto fourcc = media::Fourcc::FromVideoPixelFormat(inputFormat, false);
+    auto fourcc = Fourcc::fromVideoPixelFormat(inputFormat, false);
     if (fourcc) {
-        format = mInputQueue->setFormat(fourcc->ToV4L2PixFmt(), mVisibleSize, 0, stride);
+        format = mInputQueue->setFormat(fourcc->toV4L2PixFmt(), mVisibleSize, 0, stride);
     }
 
     // If the device doesn't support the requested input format we'll try the device's preferred

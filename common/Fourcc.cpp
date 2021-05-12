@@ -1,26 +1,23 @@
 // Copyright 2019 The Chromium Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
-// Note: ported from Chromium commit head: 27c98933749f
 
 #include <v4l2_codec2/common/Fourcc.h>
 
 #include <linux/videodev2.h>
 
-#include "base/logging.h"
-#include "base/strings/stringprintf.h"
-
 #include <utils/Log.h>
+#include <video_pixel_format.h>
 
-namespace media {
+namespace android {
 
-Fourcc::Fourcc(Fourcc::Value fourcc) : value_(fourcc) {}
+Fourcc::Fourcc(Fourcc::Value fourcc) : mValue(fourcc) {}
 Fourcc::~Fourcc() = default;
 Fourcc& Fourcc::operator=(const Fourcc& other) = default;
 
 // static
-std::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
-  switch (fourcc) {
+std::optional<Fourcc> Fourcc::fromUint32(uint32_t fourcc) {
+    switch (fourcc) {
     case AR24:
     case AB24:
     case XR24:
@@ -38,131 +35,130 @@ std::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
     case YM16:
     case MT21:
     case MM21:
-      return Fourcc(static_cast<Value>(fourcc));
-  }
-  ALOGE("Unmapped fourcc: %s", FourccToString(fourcc).c_str());
-  return std::nullopt;
+        return Fourcc(static_cast<Value>(fourcc));
+    }
+    ALOGE("Unmapped fourcc: %s", media::FourccToString(fourcc).c_str());
+    return std::nullopt;
 }
 
 // static
-base::Optional<Fourcc> Fourcc::FromVideoPixelFormat(
-    VideoPixelFormat pixel_format,
-    bool single_planar) {
-  if (single_planar) {
-    switch (pixel_format) {
-      case PIXEL_FORMAT_ARGB:
-        return Fourcc(AR24);
-      case PIXEL_FORMAT_ABGR:
-        return Fourcc(AB24);
-      case PIXEL_FORMAT_XRGB:
-        return Fourcc(XR24);
-      case PIXEL_FORMAT_XBGR:
-        return Fourcc(XB24);
-      case PIXEL_FORMAT_BGRA:
-        return Fourcc(RGB4);
-      case PIXEL_FORMAT_I420:
-        return Fourcc(YU12);
-      case PIXEL_FORMAT_YV12:
-        return Fourcc(YV12);
-      case PIXEL_FORMAT_YUY2:
-        return Fourcc(YUYV);
-      case PIXEL_FORMAT_NV12:
-        return Fourcc(NV12);
-      case PIXEL_FORMAT_NV21:
-        return Fourcc(NV21);
-      case PIXEL_FORMAT_I422:
-      case PIXEL_FORMAT_I420A:
-      case PIXEL_FORMAT_I444:
-      case PIXEL_FORMAT_RGB24:
-      case PIXEL_FORMAT_MJPEG:
-      case PIXEL_FORMAT_YUV420P9:
-      case PIXEL_FORMAT_YUV420P10:
-      case PIXEL_FORMAT_YUV422P9:
-      case PIXEL_FORMAT_YUV422P10:
-      case PIXEL_FORMAT_YUV444P9:
-      case PIXEL_FORMAT_YUV444P10:
-      case PIXEL_FORMAT_YUV420P12:
-      case PIXEL_FORMAT_YUV422P12:
-      case PIXEL_FORMAT_YUV444P12:
-      case PIXEL_FORMAT_Y16:
-      case PIXEL_FORMAT_P016LE:
-      case PIXEL_FORMAT_XR30:
-      case PIXEL_FORMAT_XB30:
-      case PIXEL_FORMAT_UNKNOWN:
-        break;
+std::optional<Fourcc> Fourcc::fromVideoPixelFormat(media::VideoPixelFormat pixelFormat,
+                                                   bool singlePlanar) {
+    if (singlePlanar) {
+        switch (pixelFormat) {
+        case media::PIXEL_FORMAT_ARGB:
+            return Fourcc(AR24);
+        case media::PIXEL_FORMAT_ABGR:
+            return Fourcc(AB24);
+        case media::PIXEL_FORMAT_XRGB:
+            return Fourcc(XR24);
+        case media::PIXEL_FORMAT_XBGR:
+            return Fourcc(XB24);
+        case media::PIXEL_FORMAT_BGRA:
+            return Fourcc(RGB4);
+        case media::PIXEL_FORMAT_I420:
+            return Fourcc(YU12);
+        case media::PIXEL_FORMAT_YV12:
+            return Fourcc(YV12);
+        case media::PIXEL_FORMAT_YUY2:
+            return Fourcc(YUYV);
+        case media::PIXEL_FORMAT_NV12:
+            return Fourcc(NV12);
+        case media::PIXEL_FORMAT_NV21:
+            return Fourcc(NV21);
+        case media::PIXEL_FORMAT_I422:
+        case media::PIXEL_FORMAT_I420A:
+        case media::PIXEL_FORMAT_I444:
+        case media::PIXEL_FORMAT_RGB24:
+        case media::PIXEL_FORMAT_MJPEG:
+        case media::PIXEL_FORMAT_YUV420P9:
+        case media::PIXEL_FORMAT_YUV420P10:
+        case media::PIXEL_FORMAT_YUV422P9:
+        case media::PIXEL_FORMAT_YUV422P10:
+        case media::PIXEL_FORMAT_YUV444P9:
+        case media::PIXEL_FORMAT_YUV444P10:
+        case media::PIXEL_FORMAT_YUV420P12:
+        case media::PIXEL_FORMAT_YUV422P12:
+        case media::PIXEL_FORMAT_YUV444P12:
+        case media::PIXEL_FORMAT_Y16:
+        case media::PIXEL_FORMAT_P016LE:
+        case media::PIXEL_FORMAT_XR30:
+        case media::PIXEL_FORMAT_XB30:
+        case media::PIXEL_FORMAT_UNKNOWN:
+            break;
+        }
+    } else {
+        switch (pixelFormat) {
+        case media::PIXEL_FORMAT_I420:
+            return Fourcc(YM12);
+        case media::PIXEL_FORMAT_YV12:
+            return Fourcc(YM21);
+        case media::PIXEL_FORMAT_NV12:
+            return Fourcc(NM12);
+        case media::PIXEL_FORMAT_I422:
+            return Fourcc(YM16);
+        case media::PIXEL_FORMAT_NV21:
+            return Fourcc(NM21);
+        case media::PIXEL_FORMAT_I420A:
+        case media::PIXEL_FORMAT_I444:
+        case media::PIXEL_FORMAT_YUY2:
+        case media::PIXEL_FORMAT_ARGB:
+        case media::PIXEL_FORMAT_XRGB:
+        case media::PIXEL_FORMAT_RGB24:
+        case media::PIXEL_FORMAT_MJPEG:
+        case media::PIXEL_FORMAT_YUV420P9:
+        case media::PIXEL_FORMAT_YUV420P10:
+        case media::PIXEL_FORMAT_YUV422P9:
+        case media::PIXEL_FORMAT_YUV422P10:
+        case media::PIXEL_FORMAT_YUV444P9:
+        case media::PIXEL_FORMAT_YUV444P10:
+        case media::PIXEL_FORMAT_YUV420P12:
+        case media::PIXEL_FORMAT_YUV422P12:
+        case media::PIXEL_FORMAT_YUV444P12:
+        case media::PIXEL_FORMAT_Y16:
+        case media::PIXEL_FORMAT_ABGR:
+        case media::PIXEL_FORMAT_XBGR:
+        case media::PIXEL_FORMAT_P016LE:
+        case media::PIXEL_FORMAT_XR30:
+        case media::PIXEL_FORMAT_XB30:
+        case media::PIXEL_FORMAT_BGRA:
+        case media::PIXEL_FORMAT_UNKNOWN:
+            break;
+        }
     }
-  } else {
-    switch (pixel_format) {
-      case PIXEL_FORMAT_I420:
-        return Fourcc(YM12);
-      case PIXEL_FORMAT_YV12:
-        return Fourcc(YM21);
-      case PIXEL_FORMAT_NV12:
-        return Fourcc(NM12);
-      case PIXEL_FORMAT_I422:
-        return Fourcc(YM16);
-      case PIXEL_FORMAT_NV21:
-        return Fourcc(NM21);
-      case PIXEL_FORMAT_I420A:
-      case PIXEL_FORMAT_I444:
-      case PIXEL_FORMAT_YUY2:
-      case PIXEL_FORMAT_ARGB:
-      case PIXEL_FORMAT_XRGB:
-      case PIXEL_FORMAT_RGB24:
-      case PIXEL_FORMAT_MJPEG:
-      case PIXEL_FORMAT_YUV420P9:
-      case PIXEL_FORMAT_YUV420P10:
-      case PIXEL_FORMAT_YUV422P9:
-      case PIXEL_FORMAT_YUV422P10:
-      case PIXEL_FORMAT_YUV444P9:
-      case PIXEL_FORMAT_YUV444P10:
-      case PIXEL_FORMAT_YUV420P12:
-      case PIXEL_FORMAT_YUV422P12:
-      case PIXEL_FORMAT_YUV444P12:
-      case PIXEL_FORMAT_Y16:
-      case PIXEL_FORMAT_ABGR:
-      case PIXEL_FORMAT_XBGR:
-      case PIXEL_FORMAT_P016LE:
-      case PIXEL_FORMAT_XR30:
-      case PIXEL_FORMAT_XB30:
-      case PIXEL_FORMAT_BGRA:
-      case PIXEL_FORMAT_UNKNOWN:
-        break;
-    }
-  }
-  ALOGE("Unmapped %s for %s", VideoPixelFormatToString(pixel_format).c_str(),
-          single_planar ? "single-planar" : "multi-planar");
-  return base::nullopt;
+    ALOGE("Unmapped %s for %s", VideoPixelFormatToString(pixelFormat).c_str(),
+          singlePlanar ? "single-planar" : "multi-planar");
+    return std::nullopt;
 }
 
-VideoPixelFormat Fourcc::ToVideoPixelFormat() const {
-  switch (value_) {
+media::VideoPixelFormat Fourcc::toVideoPixelFormat() const {
+    switch (mValue) {
     case AR24:
-      return PIXEL_FORMAT_ARGB;
+        return media::PIXEL_FORMAT_ARGB;
     case AB24:
-      return PIXEL_FORMAT_ABGR;
+        return media::PIXEL_FORMAT_ABGR;
     case XR24:
-      return PIXEL_FORMAT_XRGB;
+        return media::PIXEL_FORMAT_XRGB;
     case XB24:
-      return PIXEL_FORMAT_XBGR;
+        return media::PIXEL_FORMAT_XBGR;
     case RGB4:
-      return PIXEL_FORMAT_BGRA;
+        return media::PIXEL_FORMAT_BGRA;
     case YU12:
     case YM12:
-      return PIXEL_FORMAT_I420;
+        return media::PIXEL_FORMAT_I420;
     case YV12:
     case YM21:
-      return PIXEL_FORMAT_YV12;
+        return media::PIXEL_FORMAT_YV12;
     case YUYV:
-      return PIXEL_FORMAT_YUY2;
+        return media::PIXEL_FORMAT_YUY2;
     case NV12:
     case NM12:
-      return PIXEL_FORMAT_NV12;
+        return media::PIXEL_FORMAT_NV12;
     case NV21:
     case NM21:
-      return PIXEL_FORMAT_NV21;
+        return media::PIXEL_FORMAT_NV21;
     case YM16:
-      return PIXEL_FORMAT_I422;
+        return media::PIXEL_FORMAT_I422;
     // V4L2_PIX_FMT_MT21C is only used for MT8173 hardware video decoder output
     // and should be converted by MT8173 image processor for compositor to
     // render. Since it is an intermediate format for video decoder,
@@ -175,27 +171,28 @@ VideoPixelFormat Fourcc::ToVideoPixelFormat() const {
     // similar to V4L2_PIX_FMT_MT21C but is not compressed ; thus it can also
     // be mapped to PIXEL_FORMAT_NV12.
     case MM21:
-      return PIXEL_FORMAT_NV12;
-  }
-  NOTREACHED() << "Unmapped Fourcc: " << ToString();
-  return PIXEL_FORMAT_UNKNOWN;
+        return media::PIXEL_FORMAT_NV12;
+    }
+
+    ALOGE("Unmapped Fourcc: %s", toString().c_str());
+    return media::PIXEL_FORMAT_UNKNOWN;
 }
 
 // static
-std::optional<Fourcc> Fourcc::FromV4L2PixFmt(uint32_t v4l2_pix_fmt) {
-  // We can do that because we adopt the same internal definition of Fourcc as
-  // V4L2.
-  return FromUint32(v4l2_pix_fmt);
+std::optional<Fourcc> Fourcc::fromV4L2PixFmt(uint32_t v4l2PixFmt) {
+    // We can do that because we adopt the same internal definition of Fourcc as
+    // V4L2.
+    return fromUint32(v4l2PixFmt);
 }
 
-uint32_t Fourcc::ToV4L2PixFmt() const {
-  // Note that we can do that because we adopt the same internal definition of
-  // Fourcc as V4L2.
-  return static_cast<uint32_t>(value_);
+uint32_t Fourcc::toV4L2PixFmt() const {
+    // Note that we can do that because we adopt the same internal definition of
+    // Fourcc as V4L2.
+    return static_cast<uint32_t>(mValue);
 }
 
-base::Optional<Fourcc> Fourcc::ToSinglePlanar() const {
-  switch (value_) {
+std::optional<Fourcc> Fourcc::toSinglePlanar() const {
+    switch (mValue) {
     case AR24:
     case AB24:
     case XR24:
@@ -206,28 +203,28 @@ base::Optional<Fourcc> Fourcc::ToSinglePlanar() const {
     case YUYV:
     case NV12:
     case NV21:
-      return Fourcc(value_);
+        return Fourcc(mValue);
     case YM12:
-      return Fourcc(YU12);
+        return Fourcc(YU12);
     case YM21:
-      return Fourcc(YV12);
+        return Fourcc(YV12);
     case NM12:
-      return Fourcc(NV12);
+        return Fourcc(NV12);
     case NM21:
-      return Fourcc(NV21);
+        return Fourcc(NV21);
     case YM16:
     case MT21:
     case MM21:
-      return base::nullopt;
-  }
+        return std::nullopt;
+    }
 }
 
 bool operator!=(const Fourcc& lhs, const Fourcc& rhs) {
-  return !(lhs == rhs);
+    return !(lhs == rhs);
 }
 
-bool Fourcc::IsMultiPlanar() const {
-  switch (value_) {
+bool Fourcc::isMultiPlanar() const {
+    switch (mValue) {
     case AR24:
     case AB24:
     case XR24:
@@ -238,7 +235,7 @@ bool Fourcc::IsMultiPlanar() const {
     case YUYV:
     case NV12:
     case NV21:
-      return false;
+        return false;
     case YM12:
     case YM21:
     case NM12:
@@ -246,12 +243,12 @@ bool Fourcc::IsMultiPlanar() const {
     case YM16:
     case MT21:
     case MM21:
-      return true;
-  }
+        return true;
+    }
 }
 
-std::string Fourcc::ToString() const {
-  return FourccToString(static_cast<uint32_t>(value_));
+std::string Fourcc::toString() const {
+    return media::FourccToString(static_cast<uint32_t>(mValue));
 }
 
 static_assert(Fourcc::AR24 == V4L2_PIX_FMT_ABGR32, "Mismatch Fourcc");
@@ -280,4 +277,5 @@ static_assert(Fourcc::MT21 == V4L2_PIX_FMT_MT21C, "Mismatch Fourcc");
 // V4L2_PIX_FMT_MM21 is not yet upstreamed.
 static_assert(Fourcc::MM21 == V4L2_PIX_FMT_MM21, "Mismatch Fourcc");
 #endif  // V4L2_PIX_FMT_MM21
-}  // namespace media
+
+}  // namespace android
