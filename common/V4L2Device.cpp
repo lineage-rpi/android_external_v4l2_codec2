@@ -46,8 +46,6 @@
 #define V4L2_PIX_FMT_H264_SLICE v4l2_fourcc('S', '2', '6', '4')
 #endif
 
-#define REQUEST_DEVICE "/dev/media-dec0"
-
 namespace media {
 
 struct v4l2_format BuildV4L2Format(const enum v4l2_buf_type type,
@@ -438,7 +436,7 @@ enum v4l2_memory V4L2WritableBufferRef::Memory() const {
   return static_cast<enum v4l2_memory>(buffer_data_->v4l2_buffer_.memory);
 }
 
-bool V4L2WritableBufferRef::DoQueue(V4L2RequestRef* /*request_ref*/) && {
+bool V4L2WritableBufferRef::DoQueue() && {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(buffer_data_);
 
@@ -450,7 +448,7 @@ bool V4L2WritableBufferRef::DoQueue(V4L2RequestRef* /*request_ref*/) && {
   return queued;
 }
 
-bool V4L2WritableBufferRef::QueueMMap(V4L2RequestRef* request_ref) && {
+bool V4L2WritableBufferRef::QueueMMap() && {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(buffer_data_);
 
@@ -462,11 +460,10 @@ bool V4L2WritableBufferRef::QueueMMap(V4L2RequestRef* request_ref) && {
     return false;
   }
 
-  return std::move(self).DoQueue(request_ref);
+  return std::move(self).DoQueue();
 }
 
-bool V4L2WritableBufferRef::QueueUserPtr(const std::vector<void*>& ptrs,
-                                         V4L2RequestRef* request_ref) && {
+bool V4L2WritableBufferRef::QueueUserPtr(const std::vector<void*>& ptrs) && {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(buffer_data_);
 
@@ -488,11 +485,10 @@ bool V4L2WritableBufferRef::QueueUserPtr(const std::vector<void*>& ptrs,
     self.buffer_data_->v4l2_buffer_.m.planes[i].m.userptr =
         reinterpret_cast<unsigned long>(ptrs[i]);
 
-  return std::move(self).DoQueue(request_ref);
+  return std::move(self).DoQueue();
 }
 
-bool V4L2WritableBufferRef::QueueDMABuf(const std::vector<base::ScopedFD>& scoped_fds,
-                                        V4L2RequestRef* request_ref) && {
+bool V4L2WritableBufferRef::QueueDMABuf(const std::vector<base::ScopedFD>& scoped_fds) && {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   std::vector<int> fds;
@@ -500,11 +496,10 @@ bool V4L2WritableBufferRef::QueueDMABuf(const std::vector<base::ScopedFD>& scope
   for (const base::ScopedFD& scoped_fd : scoped_fds)
     fds.push_back(scoped_fd.get());
 
-  return std::move(*this).QueueDMABuf(fds, request_ref);
+  return std::move(*this).QueueDMABuf(fds);
 }
 
-bool V4L2WritableBufferRef::QueueDMABuf(const std::vector<int>& fds,
-                                        V4L2RequestRef* request_ref) && {
+bool V4L2WritableBufferRef::QueueDMABuf(const std::vector<int>& fds) && {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(buffer_data_);
 
@@ -523,7 +518,7 @@ bool V4L2WritableBufferRef::QueueDMABuf(const std::vector<int>& fds,
   for (size_t i = 0; i < num_planes; i++)
     self.buffer_data_->v4l2_buffer_.m.planes[i].m.fd = fds[i];
 
-  return std::move(self).DoQueue(request_ref);
+  return std::move(self).DoQueue();
 }
 
 size_t V4L2WritableBufferRef::PlanesCount() const {
@@ -1107,12 +1102,6 @@ size_t V4L2Queue::QueuedBuffersCount() const {
 #undef VDQLOGF
 #undef VPQLOGF
 #undef VQLOGF
-
-bool V4L2Queue::SupportsRequests() {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  return supports_requests_;
-}
 
 // This class is used to expose V4L2Queue's constructor to this module. This is
 // to ensure that nobody else can create instances of it.
