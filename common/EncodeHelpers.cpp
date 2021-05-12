@@ -124,9 +124,6 @@ android_ycbcr getGraphicBlockInfo(const C2ConstGraphicBlock& block) {
 
 void extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, const uint8_t* data,
                     size_t length) {
-    constexpr uint8_t kTypeSeqParamSet = 7;
-    constexpr uint8_t kTypePicParamSet = 8;
-
     // Android frameworks needs 4 bytes start code.
     constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
     constexpr int kStartCodeLength = 4;
@@ -142,9 +139,9 @@ void extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, co
     NalParser parser(data, length);
     while (parser.locateNextNal()) {
         if (parser.length() == 0) continue;
-        uint8_t nalType = *parser.data() & 0x1f;
+        uint8_t nalType = parser.type();
         ALOGV("find next NAL: type=%d, length=%zu", nalType, parser.length());
-        if (nalType != kTypeSeqParamSet && nalType != kTypePicParamSet) continue;
+        if (nalType != NalParser::kSPSType && nalType != NalParser::kPPSType) continue;
 
         if (tmpOutput + kStartCodeLength + parser.length() > tmpConfigDataEnd) {
             ALOGE("Buffer overflow on extracting codec config data (length=%zu)", length);
