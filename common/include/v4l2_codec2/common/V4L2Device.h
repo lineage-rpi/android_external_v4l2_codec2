@@ -51,10 +51,6 @@ class V4L2BufferRefBase;
 class V4L2BuffersList;
 class V4L2DecodeSurface;
 
-// Dummy V4L2RequestRef. The full request queue functionality could not be
-// ported as it requires a newer kernel header.
-class V4L2RequestRef {};
-
 // Wrapper for the 'v4l2_ext_control' structure.
 struct V4L2ExtCtrl {
   V4L2ExtCtrl(uint32_t id);
@@ -78,47 +74,36 @@ class V4L2WritableBufferRef {
   enum v4l2_memory Memory() const;
 
   // Queue a MMAP buffer.
-  // When requests are supported, a |request_ref| can be passed along this
-  // the buffer to be submitted.
   // If successful, true is returned and the reference to the buffer is dropped
   // so this reference becomes invalid.
   // In case of error, false is returned and the buffer is returned to the free
   // list.
-  bool QueueMMap(V4L2RequestRef* request_ref = nullptr) &&;
+  bool QueueMMap() &&;
   // Queue a USERPTR buffer, assigning |ptrs| as pointer for each plane.
   // The size of |ptrs| must be equal to the number of planes of this buffer.
-  // When requests are supported, a |request_ref| can be passed along this
-  // the buffer to be submitted.
   // If successful, true is returned and the reference to the buffer is dropped
   // so this reference becomes invalid.
   // In case of error, false is returned and the buffer is returned to the free
   // list.
-  bool QueueUserPtr(const std::vector<void*>& ptrs,
-                    V4L2RequestRef* request_ref = nullptr) &&;
+  bool QueueUserPtr(const std::vector<void*>& ptrs) &&;
   // Queue a DMABUF buffer, assigning |fds| as file descriptors for each plane.
   // It is allowed the number of |fds| might be greater than the number of
   // planes of this buffer. It happens when the v4l2 pixel format is single
   // planar. The fd of the first plane is only used in that case.
-  // When requests are supported, a |request_ref| can be passed along this
-  // the buffer to be submitted.
   // If successful, true is returned and the reference to the buffer is dropped
   // so this reference becomes invalid.
   // In case of error, false is returned and the buffer is returned to the free
   // list.
-  bool QueueDMABuf(const std::vector<base::ScopedFD>& scoped_fds,
-                   V4L2RequestRef* request_ref = nullptr) &&;
+  bool QueueDMABuf(const std::vector<base::ScopedFD>& scoped_fds) &&;
   // Queue a DMABUF buffer, assigning |fds| as file descriptors for each plane.
   // It is allowed the number of |fds| might be greater than the number of
   // planes of this buffer. It happens when the v4l2 pixel format is single
   // planar. The fd of the first plane is only used in that case.
-  // When requests are supported, a |request_ref| can be passed along this
-  // the buffer to be submitted.
   // If successful, true is returned and the reference to the buffer is dropped
   // so this reference becomes invalid.
   // In case of error, false is returned and the buffer is returned to the free
   // list.
-  bool QueueDMABuf(const std::vector<int>& fds,
-                   V4L2RequestRef* request_ref = nullptr) &&;
+  bool QueueDMABuf(const std::vector<int>& fds) &&;
 
   // Returns the number of planes in this buffer.
   size_t PlanesCount() const;
@@ -154,9 +139,7 @@ class V4L2WritableBufferRef {
  private:
   // Do the actual queue operation once the v4l2_buffer structure is properly
   // filled.
-  // When requests are supported, a |request_ref| can be passed along this
-  // the buffer to be submitted.
-  bool DoQueue(V4L2RequestRef* request_ref) &&;
+  bool DoQueue() &&;
 
   V4L2WritableBufferRef(const struct v4l2_buffer& v4l2_buffer,
                         base::WeakPtr<V4L2Queue> queue);
@@ -355,9 +338,6 @@ class V4L2Queue : public base::RefCountedThreadSafe<V4L2Queue> {
   // Returns the number of buffers currently queued on this queue.
   size_t QueuedBuffersCount() const;
 
-  // Returns true if requests are supported by this queue.
-  bool SupportsRequests();
-
  private:
   ~V4L2Queue();
 
@@ -367,8 +347,6 @@ class V4L2Queue : public base::RefCountedThreadSafe<V4L2Queue> {
   const enum v4l2_buf_type type_;
   enum v4l2_memory memory_ = V4L2_MEMORY_MMAP;
   bool is_streaming_ = false;
-  // Set to true if the queue supports requests.
-  bool supports_requests_ = false;
   size_t planes_count_ = 0;
   // Current format as set by SetFormat.
   base::Optional<struct v4l2_format> current_format_;
@@ -608,9 +586,6 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
   // Used if EnablePolling() is called to signal the user that an event
   // happened or a buffer is ready to be dequeued.
   std::unique_ptr<V4L2DevicePoller> device_poller_;
-
-  // Indicates whether the request queue creation has been tried once.
-  bool requests_queue_creation_called_ = false;
 
   DISALLOW_COPY_AND_ASSIGN(V4L2Device);
 
