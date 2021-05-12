@@ -114,7 +114,7 @@ bool V4L2Encoder::encode(std::unique_ptr<InputFrame> frame) {
     mEncodeRequests.push(EncodeRequest(std::move(frame)));
 
     // If we were waiting for encode requests, start encoding again.
-    if (mState == State::WAITING_FOR_INPUT) {
+    if (mState == State::WAITING_FOR_INPUT_FRAME) {
         setState(State::ENCODING);
         mTaskRunner->PostTask(FROM_HERE,
                               ::base::BindOnce(&V4L2Encoder::handleEncodeRequest, mWeakThis));
@@ -255,7 +255,7 @@ bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::option
     if (!configureDevice(outputProfile, level)) return false;
 
     // We're ready to start encoding now.
-    setState(State::WAITING_FOR_INPUT);
+    setState(State::WAITING_FOR_INPUT_FRAME);
     return true;
 }
 
@@ -284,7 +284,7 @@ void V4L2Encoder::handleEncodeRequest() {
     // on the device however.
     if (mInputQueue->FreeBuffersCount() == 0) {
         ALOGV("Waiting for device to return input buffers");
-        setState(State::WAITING_FOR_INPUT_BUFFERS);
+        setState(State::WAITING_FOR_V4L2_BUFFER);
         return;
     }
 
@@ -334,7 +334,7 @@ void V4L2Encoder::handleEncodeRequest() {
     }
 
     if (mEncodeRequests.empty()) {
-        setState(State::WAITING_FOR_INPUT);
+        setState(State::WAITING_FOR_INPUT_FRAME);
         return;
     }
 
@@ -373,7 +373,7 @@ void V4L2Encoder::handleFlushRequest() {
     // Streaming and polling on the V4L2 device input and output queues will be resumed once new
     // encode work is queued.
     if (mState != State::ERROR) {
-        setState(State::WAITING_FOR_INPUT);
+        setState(State::WAITING_FOR_INPUT_FRAME);
     }
 }
 
@@ -429,7 +429,7 @@ void V4L2Encoder::onDrainDone(bool done) {
         mTaskRunner->PostTask(FROM_HERE,
                               ::base::BindOnce(&V4L2Encoder::handleEncodeRequest, mWeakThis));
     } else {
-        setState(State::WAITING_FOR_INPUT);
+        setState(State::WAITING_FOR_INPUT_FRAME);
     }
 }
 
@@ -831,7 +831,7 @@ bool V4L2Encoder::dequeueInputBuffer() {
     mInputBufferDoneCb.Run(index);
 
     // If we previously used up all input queue buffers we can start encoding again now.
-    if ((mState == State::WAITING_FOR_INPUT_BUFFERS) && !mEncodeRequests.empty()) {
+    if ((mState == State::WAITING_FOR_V4L2_BUFFER) && !mEncodeRequests.empty()) {
         setState(State::ENCODING);
         mTaskRunner->PostTask(FROM_HERE,
                               ::base::BindOnce(&V4L2Encoder::handleEncodeRequest, mWeakThis));
@@ -978,18 +978,18 @@ void V4L2Encoder::setState(State state) {
     switch (state) {
     case State::UNINITIALIZED:
         break;
-    case State::WAITING_FOR_INPUT:
+    case State::WAITING_FOR_INPUT_FRAME:
         ALOG_ASSERT(mState != State::ERROR);
         break;
-    case State::WAITING_FOR_INPUT_BUFFERS:
+    case State::WAITING_FOR_V4L2_BUFFER:
         ALOG_ASSERT(mState == State::ENCODING);
         break;
     case State::ENCODING:
-        ALOG_ASSERT(mState == State::WAITING_FOR_INPUT ||
-                    mState == State::WAITING_FOR_INPUT_BUFFERS || mState == State::DRAINING);
+        ALOG_ASSERT(mState == State::WAITING_FOR_INPUT_FRAME ||
+                    mState == State::WAITING_FOR_V4L2_BUFFER || mState == State::DRAINING);
         break;
     case State::DRAINING:
-        ALOG_ASSERT(mState == State::ENCODING || mState == State::WAITING_FOR_INPUT);
+        ALOG_ASSERT(mState == State::ENCODING || mState == State::WAITING_FOR_INPUT_FRAME);
         break;
     case State::ERROR:
         break;
@@ -1003,10 +1003,10 @@ const char* V4L2Encoder::stateToString(State state) {
     switch (state) {
     case State::UNINITIALIZED:
         return "UNINITIALIZED";
-    case State::WAITING_FOR_INPUT:
-        return "WAITING_FOR_INPUT";
-    case State::WAITING_FOR_INPUT_BUFFERS:
-        return "WAITING_FOR_INPUT_BUFFERS";
+    case State::WAITING_FOR_INPUT_FRAME:
+        return "WAITING_FOR_INPUT_FRAME";
+    case State::WAITING_FOR_V4L2_BUFFER:
+        return "WAITING_FOR_V4L2_BUFFER";
     case State::ENCODING:
         return "ENCODING";
     case State::DRAINING:
