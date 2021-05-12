@@ -14,6 +14,8 @@
 #include <ui/GraphicBuffer.h>
 #include <utils/Log.h>
 
+#include <v4l2_codec2/common/NalParser.h>
+
 namespace android {
 
 media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profile) {
@@ -158,34 +160,6 @@ void extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, co
     ALOGV("Extracted codec config data: length=%zu", configDataLength);
     *csd = C2StreamInitDataInfo::output::AllocUnique(configDataLength, 0u);
     std::memcpy((*csd)->m.value, tmpConfigData.get(), configDataLength);
-}
-
-NalParser::NalParser(const uint8_t* data, size_t length)
-      : mCurrNalDataPos(data), mDataEnd(data + length) {
-    mNextNalStartCodePos = findNextStartCodePos();
-}
-
-bool NalParser::locateNextNal() {
-    if (mNextNalStartCodePos == mDataEnd) return false;
-    mCurrNalDataPos = mNextNalStartCodePos + kNalStartCodeLength;  // skip start code.
-    mNextNalStartCodePos = findNextStartCodePos();
-    return true;
-}
-
-const uint8_t* NalParser::data() const {
-    return mCurrNalDataPos;
-}
-
-size_t NalParser::length() const {
-    if (mNextNalStartCodePos == mDataEnd) return mDataEnd - mCurrNalDataPos;
-    size_t length = mNextNalStartCodePos - mCurrNalDataPos;
-    // The start code could be 3 or 4 bytes, i.e., 0x000001 or 0x00000001.
-    return *(mNextNalStartCodePos - 1) == 0x00 ? length - 1 : length;
-}
-
-const uint8_t* NalParser::findNextStartCodePos() const {
-    return std::search(mCurrNalDataPos, mDataEnd, kNalStartCode,
-                       kNalStartCode + kNalStartCodeLength);
 }
 
 }  // namespace android
