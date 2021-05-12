@@ -17,7 +17,7 @@
 #include <vector>
 
 #include "color_plane_layout.h"
-#include "size.h"
+#include "ui/Size.h"
 #include "video_pixel_format.h"
 
 namespace media {
@@ -60,14 +60,14 @@ class VideoFrameLayout {
   // and size of all planes are set to 0, since that information cannot reliably
   // be infered from the arguments.
   static std::optional<VideoFrameLayout> Create(VideoPixelFormat format,
-                                                 const Size& coded_size);
+                                                 const android::ui::Size& coded_size);
 
   // Create a layout suitable for |format| at |coded_size|, with the |strides|
   // for each plane specified. The offsets and size of all planes are set to 0.
   // The size of |strides| must be equal to NumPlanes(|format|).
   static std::optional<VideoFrameLayout> CreateWithStrides(
       VideoPixelFormat format,
-      const Size& coded_size,
+      const android::ui::Size& coded_size,
       std::vector<int32_t> strides);
 
   // Create a layout suitable for |format| at |coded_size|, with the |planes|
@@ -75,7 +75,7 @@ class VideoFrameLayout {
   // The size of |planes| must be equal to NumPlanes(|format|).
   static std::optional<VideoFrameLayout> CreateWithPlanes(
       VideoPixelFormat format,
-      const Size& coded_size,
+      const android::ui::Size& coded_size,
       std::vector<ColorPlaneLayout> planes,
       size_t buffer_addr_align = kBufferAddressAlignment,
       uint64_t modifier = kNoModifier);
@@ -85,7 +85,7 @@ class VideoFrameLayout {
   // plane at different offsets of the same buffer. Currently only used by V4L2.
   static std::optional<VideoFrameLayout> CreateMultiPlanar(
       VideoPixelFormat format,
-      const Size& coded_size,
+      const android::ui::Size& coded_size,
       std::vector<ColorPlaneLayout> planes,
       size_t buffer_addr_align = kBufferAddressAlignment,
       uint64_t modifier = kNoModifier);
@@ -99,7 +99,7 @@ class VideoFrameLayout {
   static size_t NumPlanes(VideoPixelFormat format);
 
   VideoPixelFormat format() const { return format_; }
-  const Size& coded_size() const { return coded_size_; }
+  const android::ui::Size& coded_size() const { return coded_size_; }
 
   // Returns number of planes. Note that num_planes >= num_buffers.
   size_t num_planes() const { return planes_.size(); }
@@ -119,7 +119,7 @@ class VideoFrameLayout {
 
  private:
   VideoFrameLayout(VideoPixelFormat format,
-                   const Size& coded_size,
+                   const android::ui::Size& coded_size,
                    std::vector<ColorPlaneLayout> planes,
                    bool is_multi_planar,
                    size_t buffer_addr_align,
@@ -132,7 +132,7 @@ class VideoFrameLayout {
   // planes, in the case that the visible portion of the image does not line up
   // on a sample boundary, |coded_size_| must be rounded up appropriately and
   // the pixel data provided for the odd pixels.
-  Size coded_size_;
+  android::ui::Size coded_size_;
 
   // Layout property for each color planes, e.g. stride and buffer offset.
   std::vector<ColorPlaneLayout> planes_;

@@ -10,8 +10,8 @@
 #include <vector>
 
 #include <base/callback.h>
+#include <ui/Size.h>
 
-#include <size.h>
 #include <v4l2_codec2/common/Common.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <video_pixel_format.h>
@@ -72,8 +72,8 @@ public:
     virtual void requestKeyframe() = 0;
 
     virtual media::VideoPixelFormat inputFormat() const = 0;
-    virtual const media::Size& visibleSize() const = 0;
-    virtual const media::Size& codedSize() const = 0;
+    virtual const ui::Size& visibleSize() const = 0;
+    virtual const ui::Size& codedSize() const = 0;
 };
 
 }  // namespace android
