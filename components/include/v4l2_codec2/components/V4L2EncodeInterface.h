@@ -15,7 +15,6 @@
 #include <util/C2InterfaceHelper.h>
 
 #include <v4l2_codec2/common/EncodeHelpers.h>
-#include <video_codecs.h>
 
 namespace media {
 class V4L2Device;
