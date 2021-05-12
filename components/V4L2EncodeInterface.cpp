@@ -304,7 +304,7 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
     // Note: unsigned int is used here, since std::vector<C2Config::profile_t> cannot convert to
     // std::vector<unsigned int> required by the c2 framework below.
     std::vector<unsigned int> profiles;
-    media::Size maxSize;
+    ui::Size maxSize;
     if (codec == media::VideoCodec::kCodecVP8) {
         auto it = find_if(supported_profiles.begin(), supported_profiles.end(),
                           [](const V4L2Device::SupportedEncodeProfile& profile) {
@@ -315,7 +315,7 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
             mInitStatus = C2_BAD_VALUE;
             return;
         }
-        maxSize = media::Size(it->max_resolution.width(), it->max_resolution.height());
+        maxSize = ui::Size(it->max_resolution.width, it->max_resolution.height);
     } else {
         for (const auto& supportedProfile : supported_profiles) {
             C2Config::profile_t profile = videoCodecProfileToC2Profile(supportedProfile.profile);
@@ -323,12 +323,10 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
                 continue;  // Ignore unrecognizable or unsupported profiles.
             }
             ALOGV("Queried c2_profile = 0x%x : max_size = %d x %d", profile,
-                  supportedProfile.max_resolution.width(),
-                  supportedProfile.max_resolution.height());
+                  supportedProfile.max_resolution.width, supportedProfile.max_resolution.height);
             profiles.push_back(static_cast<unsigned int>(profile));
-            maxSize.set_width(std::max(maxSize.width(), supportedProfile.max_resolution.width()));
-            maxSize.set_height(
-                    std::max(maxSize.height(), supportedProfile.max_resolution.height()));
+            maxSize.setWidth(std::max(maxSize.width, supportedProfile.max_resolution.width));
+            maxSize.setHeight(std::max(maxSize.height, supportedProfile.max_resolution.height));
         }
 
         if (profiles.empty()) {
@@ -349,8 +347,8 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
     addParameter(DefineParam(mInputVisibleSize, C2_PARAMKEY_PICTURE_SIZE)
                          .withDefault(new C2StreamPictureSizeInfo::input(0u, 320, 240))
                          .withFields({
-                                 C2F(mInputVisibleSize, width).inRange(2, maxSize.width(), 2),
-                                 C2F(mInputVisibleSize, height).inRange(2, maxSize.height(), 2),
+                                 C2F(mInputVisibleSize, width).inRange(2, maxSize.width, 2),
+                                 C2F(mInputVisibleSize, height).inRange(2, maxSize.height, 2),
                          })
                          .withSetter(SizeSetter)
                          .build());

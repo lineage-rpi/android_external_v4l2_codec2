@@ -7,9 +7,11 @@
 
 #include <inttypes.h>
 
+#include <optional>
 #include <string>
 
 #include <ui/Rect.h>
+#include <ui/Size.h>
 
 namespace android {
 
@@ -24,6 +26,15 @@ bool contains(const Rect& rect1, const Rect& rect2);
 
 // Convert the specified |rect| to a string.
 std::string toString(const Rect& rect);
+
+// Get the area encapsulated by the |size|. Returns nullopt if multiplication causes overflow.
+std::optional<int> getArea(const ui::Size& size);
+
+// Check whether the specified |size| is empty
+bool isEmpty(const ui::Size& size);
+
+// Convert the specified |size| to a string.
+std::string toString(const ui::Size& size);
 
 }  // namespace android
 
