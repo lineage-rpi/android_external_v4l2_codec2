@@ -42,6 +42,8 @@ media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profil
         return media::VideoCodecProfile::H264PROFILE_STEREOHIGH;
     case C2Config::PROFILE_AVC_MULTIVIEW_HIGH:
         return media::VideoCodecProfile::H264PROFILE_MULTIVIEWHIGH;
+    case C2Config::PROFILE_VP8_0:
+        return media::VideoCodecProfile::VP8PROFILE_ANY;
     case C2Config::PROFILE_VP9_0:
         return media::VideoCodecProfile::VP9PROFILE_PROFILE0;
     case C2Config::PROFILE_VP9_1:
