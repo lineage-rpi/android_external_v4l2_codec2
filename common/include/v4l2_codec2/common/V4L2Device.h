@@ -25,7 +25,6 @@
 #include <ui/Size.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
 #include <v4l2_codec2/common/VideoTypes.h>
-#include <video_frame.h>
 #include <video_frame_layout.h>
 #include <video_pixel_format.h>
 

@@ -1487,12 +1487,12 @@ ui::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& forma
     // elsewhere to calculate coded height.
 
     // We need bits per pixel for one component only to calculate the coded width from bytesperline.
-    int planeHorizBitsPerPixel = media::VideoFrame::PlaneHorizontalBitsPerPixel(frameFormat, 0);
+    int planeHorizBitsPerPixel = media::PlaneHorizontalBitsPerPixel(frameFormat, 0);
 
     // Adding up bpp for each component will give us total bpp for all components.
     int totalBpp = 0;
-    for (size_t i = 0; i < media::VideoFrame::NumPlanes(frameFormat); ++i)
-        totalBpp += media::VideoFrame::PlaneBitsPerPixel(frameFormat, i);
+    for (size_t i = 0; i < media::NumPlanes(frameFormat); ++i)
+        totalBpp += media::PlaneBitsPerPixel(frameFormat, i);
 
     if (sizeimage == 0 || bytesPerLine == 0 || planeHorizBitsPerPixel == 0 || totalBpp == 0 ||
         (bytesPerLine * 8) % planeHorizBitsPerPixel != 0) {
@@ -1512,7 +1512,7 @@ ui::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& forma
     // Sanity checks. Calculated coded size has to contain given visible size and fulfill buffer
     // byte size requirements.
     ALOG_ASSERT(media::Rect(codedSize).Contains(media::Rect(visibleSize)));
-    ALOG_ASSERT(sizeimage <= media::VideoFrame::AllocationSize(frameFormat, codedSize));
+    ALOG_ASSERT(sizeimage <= media::AllocationSize(frameFormat, codedSize));
 
     return codedSize;
 }
@@ -1631,7 +1631,7 @@ std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
     }
     const media::VideoPixelFormat videoFormat = videoFourcc->ToVideoPixelFormat();
     const size_t numBuffers = pixMp.num_planes;
-    const size_t numColorPlanes = media::VideoFrame::NumPlanes(videoFormat);
+    const size_t numColorPlanes = media::NumPlanes(videoFormat);
     if (numColorPlanes == 0) {
         ALOGE("Unsupported video format for NumPlanes(): %s",
               VideoPixelFormatToString(videoFormat).c_str());
@@ -1705,7 +1705,7 @@ std::optional<media::VideoFrameLayout> V4L2Device::v4L2FormatToVideoFrameLayout(
 size_t V4L2Device::getNumPlanesOfV4L2PixFmt(uint32_t pixFmt) {
     std::optional<media::Fourcc> fourcc = media::Fourcc::FromV4L2PixFmt(pixFmt);
     if (fourcc && fourcc->IsMultiPlanar()) {
-        return media::VideoFrame::NumPlanes(fourcc->ToVideoPixelFormat());
+        return media::NumPlanes(fourcc->ToVideoPixelFormat());
     }
     return 1u;
 }
