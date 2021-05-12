@@ -23,6 +23,7 @@
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/posix/eintr_wrapper.h"
+#include "base/thread_annotations.h"
 
 #include "color_plane_layout.h"
 #include "generic_v4l2_device.h"
