@@ -62,21 +62,24 @@ size_t VideoFrame::NumPlanes(VideoPixelFormat format) {
 
 // static
 size_t VideoFrame::AllocationSize(VideoPixelFormat format,
-                                  const Size& coded_size) {
+                                  const android::ui::Size& coded_size) {
   size_t total = 0;
-  for (size_t i = 0; i < NumPlanes(format); ++i)
-    total += PlaneSize(format, i, coded_size).GetArea();
+  for (size_t i = 0; i < NumPlanes(format); ++i) {
+      android::ui::Size plane_size = PlaneSize(format, i, coded_size);
+      total += (plane_size.width * plane_size.height);
+  }
+
   return total;
 }
 
 // static
-Size VideoFrame::PlaneSize(VideoPixelFormat format,
+android::ui::Size VideoFrame::PlaneSize(VideoPixelFormat format,
                            size_t plane,
-                           const Size& coded_size) {
+                           const android::ui::Size& coded_size) {
   DCHECK(IsValidPlane(plane, format));
 
-  int width = coded_size.width();
-  int height = coded_size.height();
+  int width = coded_size.width;
+  int height = coded_size.height;
   if (RequiresEvenSizeAllocation(format)) {
     // Align to multiple-of-two size overall. This ensures that non-subsampled
     // planes can be addressed by pixel with the same scaling as the subsampled
@@ -85,11 +88,11 @@ Size VideoFrame::PlaneSize(VideoPixelFormat format,
     height = base::bits::Align(height, 2);
   }
 
-  const Size subsample = SampleSize(format, plane);
-  DCHECK(width % subsample.width() == 0);
-  DCHECK(height % subsample.height() == 0);
-  return Size(BytesPerElement(format, plane) * width / subsample.width(),
-              height / subsample.height());
+  const android::ui::Size subsample = SampleSize(format, plane);
+  DCHECK(width % subsample.width == 0);
+  DCHECK(height % subsample.height == 0);
+  return android::ui::Size(BytesPerElement(format, plane) * width / subsample.width,
+              height / subsample.height);
 }
 
 // static
@@ -97,7 +100,7 @@ int VideoFrame::PlaneHorizontalBitsPerPixel(VideoPixelFormat format,
                                             size_t plane) {
   DCHECK(IsValidPlane(plane, format));
   const int bits_per_element = 8 * BytesPerElement(format, plane);
-  const int horiz_pixels_per_element = SampleSize(format, plane).width();
+  const int horiz_pixels_per_element = SampleSize(format, plane).width;
   DCHECK_EQ(bits_per_element % horiz_pixels_per_element, 0);
   return bits_per_element / horiz_pixels_per_element;
 }
@@ -106,7 +109,7 @@ int VideoFrame::PlaneHorizontalBitsPerPixel(VideoPixelFormat format,
 int VideoFrame::PlaneBitsPerPixel(VideoPixelFormat format, size_t plane) {
   DCHECK(IsValidPlane(plane, format));
   return PlaneHorizontalBitsPerPixel(format, plane) /
-         SampleSize(format, plane).height();
+         SampleSize(format, plane).height;
 }
 
 // static
@@ -164,13 +167,13 @@ bool VideoFrame::IsValidPlane(VideoPixelFormat format, size_t plane) {
 }
 
 // static
-Size VideoFrame::SampleSize(VideoPixelFormat format, size_t plane) {
+android::ui::Size VideoFrame::SampleSize(VideoPixelFormat format, size_t plane) {
   DCHECK(IsValidPlane(format, plane));
 
   switch (plane) {
     case kYPlane:  // and kARGBPlane:
     case kAPlane:
-      return Size(1, 1);
+      return android::ui::Size(1, 1);
 
     case kUPlane:  // and kUVPlane:
     case kVPlane:
@@ -180,13 +183,13 @@ Size VideoFrame::SampleSize(VideoPixelFormat format, size_t plane) {
         case PIXEL_FORMAT_YUV444P10:
         case PIXEL_FORMAT_YUV444P12:
         case PIXEL_FORMAT_Y16:
-          return Size(1, 1);
+          return android::ui::Size(1, 1);
 
         case PIXEL_FORMAT_I422:
         case PIXEL_FORMAT_YUV422P9:
         case PIXEL_FORMAT_YUV422P10:
         case PIXEL_FORMAT_YUV422P12:
-          return Size(2, 1);
+          return android::ui::Size(2, 1);
 
         case PIXEL_FORMAT_YV12:
         case PIXEL_FORMAT_I420:
@@ -197,7 +200,7 @@ Size VideoFrame::SampleSize(VideoPixelFormat format, size_t plane) {
         case PIXEL_FORMAT_YUV420P10:
         case PIXEL_FORMAT_YUV420P12:
         case PIXEL_FORMAT_P016LE:
-          return Size(2, 2);
+          return android::ui::Size(2, 2);
 
         case PIXEL_FORMAT_UNKNOWN:
         case PIXEL_FORMAT_YUY2:
@@ -214,7 +217,7 @@ Size VideoFrame::SampleSize(VideoPixelFormat format, size_t plane) {
       }
   }
   NOTREACHED();
-  return Size();
+  return android::ui::Size();
 }
 
 }  // namespace media
