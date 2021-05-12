@@ -584,10 +584,15 @@ bool V4L2Encoder::configureDevice(media::VideoCodecProfile outputProfile,
                           media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)});
 
     // All controls below are H.264-specific, so we can return here if the profile is not H.264.
-    if (outputProfile < media::H264PROFILE_MIN || outputProfile > media::H264PROFILE_MAX) {
-        return true;
+    if (outputProfile >= media::H264PROFILE_MIN || outputProfile <= media::H264PROFILE_MAX) {
+        return configureH264(outputProfile, outputH264Level);
     }
 
+    return true;
+}
+
+bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
+                                std::optional<const uint8_t> outputH264Level) {
     // When encoding H.264 we want to prepend SPS and PPS to each IDR for resilience. Some
     // devices support this through the V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR control.
     // TODO(b/161495502): V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR is currently not supported
