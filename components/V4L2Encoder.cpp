@@ -25,7 +25,7 @@ namespace android {
 
 namespace {
 
-const media::VideoPixelFormat kInputPixelFormat = media::VideoPixelFormat::PIXEL_FORMAT_NV12;
+const VideoPixelFormat kInputPixelFormat = VideoPixelFormat::NV12;
 
 // The maximum size for output buffer, which is chosen empirically for a 1080p video.
 constexpr size_t kMaxBitstreamBufferSizeInBytes = 2 * 1024 * 1024;  // 2MB
@@ -184,9 +184,8 @@ void V4L2Encoder::requestKeyframe() {
     mKeyFrameCounter = 0;
 }
 
-media::VideoPixelFormat V4L2Encoder::inputFormat() const {
-    return mInputLayout ? mInputLayout.value().mFormat
-                        : media::VideoPixelFormat::PIXEL_FORMAT_UNKNOWN;
+VideoPixelFormat V4L2Encoder::inputFormat() const {
+    return mInputLayout ? mInputLayout.value().mFormat : VideoPixelFormat::UNKNOWN;
 }
 
 bool V4L2Encoder::initialize(C2Config::profile_t outputProfile, std::optional<uint8_t> level,
@@ -216,7 +215,7 @@ bool V4L2Encoder::initialize(C2Config::profile_t outputProfile, std::optional<ui
 
     if (!mDevice->open(V4L2Device::Type::kEncoder, outputPixelFormat)) {
         ALOGE("Failed to open device for profile %s (%s)", profileToString(outputProfile),
-              media::FourccToString(outputPixelFormat).c_str());
+              fourccToString(outputPixelFormat).c_str());
         return false;
     }
 
@@ -432,7 +431,7 @@ void V4L2Encoder::onDrainDone(bool done) {
     }
 }
 
-bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint32_t stride) {
+bool V4L2Encoder::configureInputFormat(VideoPixelFormat inputFormat, uint32_t stride) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState == State::UNINITIALIZED);
@@ -458,8 +457,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     }
 
     if (!format) {
-        ALOGE("Failed to set input format to %s",
-              media::VideoPixelFormatToString(inputFormat).c_str());
+        ALOGE("Failed to set input format to %s", videoPixelFormatToString(inputFormat).c_str());
         return false;
     }
 
@@ -535,9 +533,8 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     }
 
     ALOGV("Input format set to %s (size: %s, adjusted size: %dx%d, coded size: %s)",
-          media::VideoPixelFormatToString(mInputLayout->mFormat).c_str(),
-          toString(mVisibleSize).c_str(), visibleRectangle.width(), visibleRectangle.height(),
-          toString(mInputCodedSize).c_str());
+          videoPixelFormatToString(mInputLayout->mFormat).c_str(), toString(mVisibleSize).c_str(),
+          visibleRectangle.width(), visibleRectangle.height(), toString(mInputCodedSize).c_str());
 
     mVisibleSize.set(visibleRectangle.width(), visibleRectangle.height());
     return true;
@@ -728,10 +725,10 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
         // buffer should be sum of each color planes' size.
         size_t bytesUsed = 0;
         if (planes.size() == 1) {
-            bytesUsed = media::AllocationSize(format, mInputLayout->mCodedSize);
+            bytesUsed = allocationSize(format, mInputLayout->mCodedSize);
         } else {
             bytesUsed = ::base::checked_cast<size_t>(
-                    getArea(media::PlaneSize(format, i, mInputLayout->mCodedSize)).value());
+                    getArea(planeSize(format, i, mInputLayout->mCodedSize)).value());
         }
 
         // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined
