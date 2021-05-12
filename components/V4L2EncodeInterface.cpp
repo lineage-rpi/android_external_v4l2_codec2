@@ -288,7 +288,7 @@ V4L2EncodeInterface::V4L2EncodeInterface(const C2String& name,
 }
 
 void V4L2EncodeInterface::Initialize(const C2String& name) {
-    scoped_refptr<media::V4L2Device> device = media::V4L2Device::Create();
+    scoped_refptr<V4L2Device> device = V4L2Device::create();
     if (!device) {
         ALOGE("Failed to create V4L2 device");
         mInitStatus = C2_CORRUPTED;
@@ -298,7 +298,7 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
     media::VideoCodec codec =
             getCodecFromComponentName(name).value_or(media::VideoCodec::kUnknownVideoCodec);
     media::VideoEncodeAccelerator::SupportedProfiles supported_profiles =
-            device->GetSupportedEncodeProfiles();
+            device->getSupportedEncodeProfiles();
 
     // Compile the list of supported profiles. In the case of VP8 only a single profile is
     // supported, which is not defined by the C2 framework.

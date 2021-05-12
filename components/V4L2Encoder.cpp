@@ -152,8 +152,8 @@ bool V4L2Encoder::setBitrate(uint32_t bitrate) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
-    if (!mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG,
-                              {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_BITRATE, bitrate)})) {
+    if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
+                              {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_BITRATE, bitrate)})) {
         ALOGE("Setting bitrate to %u failed", bitrate);
         return false;
     }
@@ -169,7 +169,7 @@ bool V4L2Encoder::setFramerate(uint32_t framerate) {
     parms.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
     parms.parm.output.timeperframe.numerator = 1;
     parms.parm.output.timeperframe.denominator = framerate;
-    if (mDevice->Ioctl(VIDIOC_S_PARM, &parms) != 0) {
+    if (mDevice->ioctl(VIDIOC_S_PARM, &parms) != 0) {
         ALOGE("Setting framerate to %u failed", framerate);
         return false;
     }
@@ -201,20 +201,19 @@ bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::option
 
     // Open the V4L2 device for encoding to the requested output format.
     // TODO(dstaessens): Avoid conversion to VideoCodecProfile and use C2Config::profile_t directly.
-    uint32_t outputPixelFormat =
-            media::V4L2Device::VideoCodecProfileToV4L2PixFmt(outputProfile, false);
+    uint32_t outputPixelFormat = V4L2Device::videoCodecProfileToV4L2PixFmt(outputProfile, false);
     if (!outputPixelFormat) {
         ALOGE("Invalid output profile %s", media::GetProfileName(outputProfile).c_str());
         return false;
     }
 
-    mDevice = media::V4L2Device::Create();
+    mDevice = V4L2Device::create();
     if (!mDevice) {
         ALOGE("Failed to create V4L2 device");
         return false;
     }
 
-    if (!mDevice->Open(media::V4L2Device::Type::kEncoder, outputPixelFormat)) {
+    if (!mDevice->open(V4L2Device::Type::kEncoder, outputPixelFormat)) {
         ALOGE("Failed to open device for profile %s (%s)",
               media::GetProfileName(outputProfile).c_str(),
               media::FourccToString(outputPixelFormat).c_str());
@@ -223,18 +222,18 @@ bool V4L2Encoder::initialize(media::VideoCodecProfile outputProfile, std::option
 
     // Make sure the device has all required capabilities (multi-planar Memory-To-Memory and
     // streaming I/O), and whether flushing is supported.
-    if (!mDevice->HasCapabilities(V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING)) {
+    if (!mDevice->hasCapabilities(V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING)) {
         ALOGE("Device doesn't have the required capabilities");
         return false;
     }
-    if (!mDevice->IsCommandSupported(V4L2_ENC_CMD_STOP)) {
+    if (!mDevice->isCommandSupported(V4L2_ENC_CMD_STOP)) {
         ALOGE("Device does not support flushing (V4L2_ENC_CMD_STOP)");
         return false;
     }
 
     // Get input/output queues so we can send encode request to the device and get back the results.
-    mInputQueue = mDevice->GetQueue(V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
-    mOutputQueue = mDevice->GetQueue(V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+    mInputQueue = mDevice->getQueue(V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+    mOutputQueue = mDevice->getQueue(V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
     if (!mInputQueue || !mOutputQueue) {
         ALOGE("Failed to get V4L2 device queues");
         return false;
@@ -282,7 +281,7 @@ void V4L2Encoder::handleEncodeRequest() {
     // Note: The input buffers are not copied into the device's input buffers, but rather a memory
     // pointer is imported. We still have to throttle the number of enqueues queued simultaneously
     // on the device however.
-    if (mInputQueue->FreeBuffersCount() == 0) {
+    if (mInputQueue->freeBuffersCount() == 0) {
         ALOGV("Waiting for device to return input buffers");
         setState(State::WAITING_FOR_V4L2_BUFFER);
         return;
@@ -290,8 +289,8 @@ void V4L2Encoder::handleEncodeRequest() {
 
     // Request the next frame to be a key frame each time the counter reaches 0.
     if (mKeyFrameCounter == 0) {
-        if (!mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG,
-                                  {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME)})) {
+        if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
+                                  {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME)})) {
             ALOGE("Failed requesting key frame");
             onError();
             return;
@@ -312,9 +311,9 @@ void V4L2Encoder::handleEncodeRequest() {
     mEncodeRequests.pop();
 
     // Start streaming and polling on the input and output queue if required.
-    if (!mInputQueue->IsStreaming()) {
-        ALOG_ASSERT(!mOutputQueue->IsStreaming());
-        if (!mOutputQueue->Streamon() || !mInputQueue->Streamon()) {
+    if (!mInputQueue->isStreaming()) {
+        ALOG_ASSERT(!mOutputQueue->isStreaming());
+        if (!mOutputQueue->streamon() || !mInputQueue->streamon()) {
             ALOGE("Failed to start streaming on input and output queue");
             onError();
             return;
@@ -323,7 +322,7 @@ void V4L2Encoder::handleEncodeRequest() {
     }
 
     // Queue buffers on output queue. These buffers will be used to store the encoded bitstream.
-    while (mOutputQueue->FreeBuffersCount() > 0) {
+    while (mOutputQueue->freeBuffersCount() > 0) {
         if (!enqueueOutputBuffer()) return;
     }
 
@@ -353,7 +352,7 @@ void V4L2Encoder::handleFlushRequest() {
     // Stop streaming on the V4L2 device, which stops all currently queued encode operations and
     // releases all buffers currently in use by the device.
     for (auto& queue : {mInputQueue, mOutputQueue}) {
-        if (queue && queue->IsStreaming() && !queue->Streamoff()) {
+        if (queue && queue->isStreaming() && !queue->streamoff()) {
             ALOGE("Failed to stop streaming on the device queue");
             onError();
         }
@@ -388,7 +387,7 @@ void V4L2Encoder::handleDrainRequest() {
     setState(State::DRAINING);
 
     // If we're not streaming we can consider the request completed immediately.
-    if (!mInputQueue->IsStreaming()) {
+    if (!mInputQueue->isStreaming()) {
         onDrainDone(true);
         return;
     }
@@ -396,7 +395,7 @@ void V4L2Encoder::handleDrainRequest() {
     struct v4l2_encoder_cmd cmd;
     memset(&cmd, 0, sizeof(v4l2_encoder_cmd));
     cmd.cmd = V4L2_ENC_CMD_STOP;
-    if (mDevice->Ioctl(VIDIOC_ENCODER_CMD, &cmd) != 0) {
+    if (mDevice->ioctl(VIDIOC_ENCODER_CMD, &cmd) != 0) {
         ALOGE("Failed to stop encoder");
         onDrainDone(false);
         return;
@@ -437,14 +436,14 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState == State::UNINITIALIZED);
-    ALOG_ASSERT(!mInputQueue->IsStreaming());
+    ALOG_ASSERT(!mInputQueue->isStreaming());
     ALOG_ASSERT(!mVisibleSize.IsEmpty());
 
     // First try to use the requested pixel format directly.
-    base::Optional<struct v4l2_format> format;
+    std::optional<struct v4l2_format> format;
     auto fourcc = media::Fourcc::FromVideoPixelFormat(inputFormat, false);
     if (fourcc) {
-        format = mInputQueue->SetFormat(fourcc->ToV4L2PixFmt(), mVisibleSize, 0, stride);
+        format = mInputQueue->setFormat(fourcc->ToV4L2PixFmt(), mVisibleSize, 0, stride);
     }
 
     // If the device doesn't support the requested input format we'll try the device's preferred
@@ -452,9 +451,9 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     // might not be supported for the configured output format.
     if (!format) {
         std::vector<uint32_t> preferredFormats =
-                mDevice->PreferredInputFormat(media::V4L2Device::Type::kEncoder);
+                mDevice->preferredInputFormat(V4L2Device::Type::kEncoder);
         for (uint32_t i = 0; !format && i < preferredFormats.size(); ++i) {
-            format = mInputQueue->SetFormat(preferredFormats[i], mVisibleSize, 0, stride);
+            format = mInputQueue->setFormat(preferredFormats[i], mVisibleSize, 0, stride);
         }
     }
 
@@ -466,7 +465,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
 
     // Check whether the negotiated input format is valid. The coded size might be adjusted to match
     // encoder minimums, maximums and alignment requirements of the currently selected formats.
-    auto layout = media::V4L2Device::V4L2FormatToVideoFrameLayout(*format);
+    auto layout = V4L2Device::v4L2FormatToVideoFrameLayout(*format);
     if (!layout) {
         ALOGE("Invalid input layout");
         return false;
@@ -481,10 +480,10 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
 
     // Calculate the input coded size from the format.
     // TODO(dstaessens): How is this different from mInputLayout->coded_size()?
-    mInputCodedSize = media::V4L2Device::AllocatedSizeFromV4L2Format(*format);
+    mInputCodedSize = V4L2Device::allocatedSizeFromV4L2Format(*format);
 
     // Configuring the input format might cause the output buffer size to change.
-    auto outputFormat = mOutputQueue->GetFormat();
+    auto outputFormat = mOutputQueue->getFormat();
     if (!outputFormat.first) {
         ALOGE("Failed to get output format (errno: %i)", outputFormat.second);
         return false;
@@ -516,7 +515,7 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
     selection_arg.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
     selection_arg.target = V4L2_SEL_TGT_CROP;
     selection_arg.r = rect;
-    if (mDevice->Ioctl(VIDIOC_S_SELECTION, &selection_arg) == 0) {
+    if (mDevice->ioctl(VIDIOC_S_SELECTION, &selection_arg) == 0) {
         visibleRectangle = media::Rect(selection_arg.r.left, selection_arg.r.top,
                                        selection_arg.r.width, selection_arg.r.height);
     } else {
@@ -524,8 +523,8 @@ bool V4L2Encoder::configureInputFormat(media::VideoPixelFormat inputFormat, uint
         memset(&crop, 0, sizeof(v4l2_crop));
         crop.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
         crop.c = rect;
-        if (mDevice->Ioctl(VIDIOC_S_CROP, &crop) != 0 ||
-            mDevice->Ioctl(VIDIOC_G_CROP, &crop) != 0) {
+        if (mDevice->ioctl(VIDIOC_S_CROP, &crop) != 0 ||
+            mDevice->ioctl(VIDIOC_G_CROP, &crop) != 0) {
             ALOGE("Failed to crop to specified visible rectangle");
             return false;
         }
@@ -545,12 +544,12 @@ bool V4L2Encoder::configureOutputFormat(media::VideoCodecProfile outputProfile) 
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState == State::UNINITIALIZED);
-    ALOG_ASSERT(!mOutputQueue->IsStreaming());
+    ALOG_ASSERT(!mOutputQueue->isStreaming());
     ALOG_ASSERT(!mVisibleSize.IsEmpty());
 
-    auto format = mOutputQueue->SetFormat(
-            media::V4L2Device::VideoCodecProfileToV4L2PixFmt(outputProfile, false), mVisibleSize,
-            GetMaxOutputBufferSize(mVisibleSize));
+    auto format =
+            mOutputQueue->setFormat(V4L2Device::videoCodecProfileToV4L2PixFmt(outputProfile, false),
+                                    mVisibleSize, GetMaxOutputBufferSize(mVisibleSize));
     if (!format) {
         ALOGE("Failed to set output format to %s", media::GetProfileName(outputProfile).c_str());
         return false;
@@ -570,8 +569,8 @@ bool V4L2Encoder::configureDevice(media::VideoCodecProfile outputProfile,
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
     // Enable frame-level bitrate control. This is the only mandatory general control.
-    if (!mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG,
-                              {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE, 1)})) {
+    if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
+                              {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE, 1)})) {
         ALOGW("Failed enabling bitrate control");
         // TODO(b/161508368): V4L2_CID_MPEG_VIDEO_FRAME_RC_ENABLE is currently not supported yet,
         // assume the operation was successful for now.
@@ -580,9 +579,8 @@ bool V4L2Encoder::configureDevice(media::VideoCodecProfile outputProfile,
     // Additional optional controls:
     // - Enable macroblock-level bitrate control.
     // - Set GOP length to 0 to disable periodic key frames.
-    mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG,
-                         {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE, 1),
-                          media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)});
+    mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG, {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_MB_RC_ENABLE, 1),
+                                                V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)});
 
     // All controls below are H.264-specific, so we can return here if the profile is not H.264.
     if (outputProfile >= media::H264PROFILE_MIN || outputProfile <= media::H264PROFILE_MAX) {
@@ -598,10 +596,9 @@ bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
     // devices support this through the V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR control.
     // TODO(b/161495502): V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR is currently not supported
     // yet, just log a warning if the operation was unsuccessful for now.
-    if (mDevice->IsCtrlExposed(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR)) {
-        if (!mDevice->SetExtCtrls(
-                    V4L2_CTRL_CLASS_MPEG,
-                    {media::V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR, 1)})) {
+    if (mDevice->isCtrlExposed(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR)) {
+        if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
+                                  {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR, 1)})) {
             ALOGE("Failed to configure device to prepend SPS and PPS to each IDR");
             return false;
         }
@@ -610,7 +607,7 @@ bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
         ALOGW("Device doesn't support prepending SPS and PPS to IDR");
     }
 
-    std::vector<media::V4L2ExtCtrl> h264Ctrls;
+    std::vector<V4L2ExtCtrl> h264Ctrls;
 
     // No B-frames, for lowest decoding latency.
     h264Ctrls.emplace_back(V4L2_CID_MPEG_VIDEO_B_FRAMES, 0);
@@ -618,7 +615,7 @@ bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
     h264Ctrls.emplace_back(V4L2_CID_MPEG_VIDEO_H264_MAX_QP, 51);
 
     // Set H.264 profile.
-    int32_t profile = media::V4L2Device::VideoCodecProfileToV4L2H264Profile(outputProfile);
+    int32_t profile = V4L2Device::videoCodecProfileToV4L2H264Profile(outputProfile);
     if (profile < 0) {
         ALOGE("Trying to set invalid H.264 profile");
         return false;
@@ -635,7 +632,7 @@ bool V4L2Encoder::configureH264(media::VideoCodecProfile outputProfile,
                            V4L2_MPEG_VIDEO_HEADER_MODE_JOINED_WITH_1ST_FRAME);
 
     // Ignore return value as these controls are optional.
-    mDevice->SetExtCtrls(V4L2_CTRL_CLASS_MPEG, std::move(h264Ctrls));
+    mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG, std::move(h264Ctrls));
 
     return true;
 }
@@ -644,7 +641,7 @@ bool V4L2Encoder::startDevicePoll() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
-    if (!mDevice->StartPolling(::base::BindRepeating(&V4L2Encoder::serviceDeviceTask, mWeakThis),
+    if (!mDevice->startPolling(::base::BindRepeating(&V4L2Encoder::serviceDeviceTask, mWeakThis),
                                ::base::BindRepeating(&V4L2Encoder::onPollError, mWeakThis))) {
         ALOGE("Device poll thread failed to start");
         onError();
@@ -659,7 +656,7 @@ bool V4L2Encoder::stopDevicePoll() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
-    if (!mDevice->StopPolling()) {
+    if (!mDevice->stopPolling()) {
         ALOGE("Failed to stop polling on the device");
         onError();
         return false;
@@ -684,12 +681,12 @@ void V4L2Encoder::serviceDeviceTask(bool /*event*/) {
     }
 
     // Dequeue completed input (VIDEO_OUTPUT) buffers, and recycle to the free list.
-    while (mInputQueue->QueuedBuffersCount() > 0) {
+    while (mInputQueue->queuedBuffersCount() > 0) {
         if (!dequeueInputBuffer()) break;
     }
 
     // Dequeue completed output (VIDEO_CAPTURE) buffers, and recycle to the free list.
-    while (mOutputQueue->QueuedBuffersCount() > 0) {
+    while (mOutputQueue->queuedBuffersCount() > 0) {
         if (!dequeueOutputBuffer()) break;
     }
 
@@ -698,7 +695,7 @@ void V4L2Encoder::serviceDeviceTask(bool /*event*/) {
 
 bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(mInputQueue->FreeBuffersCount() > 0);
+    ALOG_ASSERT(mInputQueue->freeBuffersCount() > 0);
     ALOG_ASSERT(mState == State::ENCODING);
     ALOG_ASSERT(frame);
     ALOG_ASSERT(mInputLayout->format() == frame->pixelFormat());
@@ -711,17 +708,17 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
 
     ALOGV("%s(): queuing input buffer (index: %" PRId64 ")", __func__, index);
 
-    auto buffer = mInputQueue->GetFreeBuffer();
+    auto buffer = mInputQueue->getFreeBuffer();
     if (!buffer) {
         ALOGE("Failed to get free buffer from device input queue");
         return false;
     }
 
     // Mark the buffer with the frame's timestamp so we can identify the associated output buffers.
-    buffer->SetTimeStamp(
+    buffer->setTimeStamp(
             {.tv_sec = static_cast<time_t>(timestamp / ::base::Time::kMicrosecondsPerSecond),
              .tv_usec = static_cast<time_t>(timestamp % ::base::Time::kMicrosecondsPerSecond)});
-    size_t bufferId = buffer->BufferId();
+    size_t bufferId = buffer->bufferId();
 
     for (size_t i = 0; i < planes.size(); ++i) {
         // Single-buffer input format may have multiple color planes, so bytesUsed of the single
@@ -737,14 +734,14 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
         // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined
         // in V4L2 specification, so we abuse data_offset for now. Fix it when we have the
         // right interface, including any necessary validation and potential alignment.
-        buffer->SetPlaneDataOffset(i, planes[i].mOffset);
+        buffer->setPlaneDataOffset(i, planes[i].mOffset);
         bytesUsed += planes[i].mOffset;
         // Workaround: filling length should not be needed. This is a bug of videobuf2 library.
-        buffer->SetPlaneSize(i, mInputLayout->planes()[i].size + planes[i].mOffset);
-        buffer->SetPlaneBytesUsed(i, bytesUsed);
+        buffer->setPlaneSize(i, mInputLayout->planes()[i].size + planes[i].mOffset);
+        buffer->setPlaneBytesUsed(i, bytesUsed);
     }
 
-    if (!std::move(*buffer).QueueDMABuf(frame->fds())) {
+    if (!std::move(*buffer).queueDMABuf(frame->fds())) {
         ALOGE("Failed to queue input buffer using QueueDMABuf");
         onError();
         return false;
@@ -763,9 +760,9 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
 bool V4L2Encoder::enqueueOutputBuffer() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(mOutputQueue->FreeBuffersCount() > 0);
+    ALOG_ASSERT(mOutputQueue->freeBuffersCount() > 0);
 
-    auto buffer = mOutputQueue->GetFreeBuffer();
+    auto buffer = mOutputQueue->getFreeBuffer();
     if (!buffer) {
         ALOGE("Failed to get free buffer from device output queue");
         onError();
@@ -780,11 +777,11 @@ bool V4L2Encoder::enqueueOutputBuffer() {
         return false;
     }
 
-    size_t bufferId = buffer->BufferId();
+    size_t bufferId = buffer->bufferId();
 
     std::vector<int> fds;
     fds.push_back(bitstreamBuffer->dmabuf_fd);
-    if (!std::move(*buffer).QueueDMABuf(fds)) {
+    if (!std::move(*buffer).queueDMABuf(fds)) {
         ALOGE("Failed to queue output buffer using QueueDMABuf");
         onError();
         return false;
@@ -800,15 +797,15 @@ bool V4L2Encoder::dequeueInputBuffer() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState != State::UNINITIALIZED);
-    ALOG_ASSERT(mInputQueue->QueuedBuffersCount() > 0);
+    ALOG_ASSERT(mInputQueue->queuedBuffersCount() > 0);
 
     if (mState == State::ERROR) {
         return false;
     }
 
     bool success;
-    media::V4L2ReadableBufferRef buffer;
-    std::tie(success, buffer) = mInputQueue->DequeueBuffer();
+    V4L2ReadableBufferRef buffer;
+    std::tie(success, buffer) = mInputQueue->dequeueBuffer();
     if (!success) {
         ALOGE("Failed to dequeue buffer from input queue");
         onError();
@@ -819,14 +816,14 @@ bool V4L2Encoder::dequeueInputBuffer() {
         return false;
     }
 
-    uint64_t index = mInputBuffers[buffer->BufferId()]->index();
-    int64_t timestamp = buffer->GetTimeStamp().tv_usec +
-                        buffer->GetTimeStamp().tv_sec * ::base::Time::kMicrosecondsPerSecond;
+    uint64_t index = mInputBuffers[buffer->bufferId()]->index();
+    int64_t timestamp = buffer->getTimeStamp().tv_usec +
+                        buffer->getTimeStamp().tv_sec * ::base::Time::kMicrosecondsPerSecond;
     ALOGV("Dequeued buffer from input queue (index: %" PRId64 ", timestamp: %" PRId64
           ", bufferId: %zu)",
-          index, timestamp, buffer->BufferId());
+          index, timestamp, buffer->bufferId());
 
-    mInputBuffers[buffer->BufferId()] = nullptr;
+    mInputBuffers[buffer->bufferId()] = nullptr;
 
     mInputBufferDoneCb.Run(index);
 
@@ -844,15 +841,15 @@ bool V4L2Encoder::dequeueOutputBuffer() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(mState != State::UNINITIALIZED);
-    ALOG_ASSERT(mOutputQueue->QueuedBuffersCount() > 0);
+    ALOG_ASSERT(mOutputQueue->queuedBuffersCount() > 0);
 
     if (mState == State::ERROR) {
         return false;
     }
 
     bool success;
-    media::V4L2ReadableBufferRef buffer;
-    std::tie(success, buffer) = mOutputQueue->DequeueBuffer();
+    V4L2ReadableBufferRef buffer;
+    std::tie(success, buffer) = mOutputQueue->dequeueBuffer();
     if (!success) {
         ALOGE("Failed to dequeue buffer from output queue");
         onError();
@@ -863,36 +860,36 @@ bool V4L2Encoder::dequeueOutputBuffer() {
         return false;
     }
 
-    size_t encodedDataSize = buffer->GetPlaneBytesUsed(0) - buffer->GetPlaneDataOffset(0);
+    size_t encodedDataSize = buffer->getPlaneBytesUsed(0) - buffer->getPlaneDataOffset(0);
     ::base::TimeDelta timestamp = ::base::TimeDelta::FromMicroseconds(
-            buffer->GetTimeStamp().tv_usec +
-            buffer->GetTimeStamp().tv_sec * ::base::Time::kMicrosecondsPerSecond);
+            buffer->getTimeStamp().tv_usec +
+            buffer->getTimeStamp().tv_sec * ::base::Time::kMicrosecondsPerSecond);
 
     ALOGV("Dequeued buffer from output queue (timestamp: %" PRId64
           ", bufferId: %zu, data size: %zu, EOS: %d)",
-          timestamp.InMicroseconds(), buffer->BufferId(), encodedDataSize, buffer->IsLast());
+          timestamp.InMicroseconds(), buffer->bufferId(), encodedDataSize, buffer->isLast());
 
-    if (!mOutputBuffers[buffer->BufferId()]) {
+    if (!mOutputBuffers[buffer->bufferId()]) {
         ALOGE("Failed to find output block associated with output buffer");
         onError();
         return false;
     }
 
     std::unique_ptr<BitstreamBuffer> bitstream_buffer =
-            std::move(mOutputBuffers[buffer->BufferId()]);
+            std::move(mOutputBuffers[buffer->bufferId()]);
     if (encodedDataSize > 0) {
-        mOutputBufferDoneCb.Run(encodedDataSize, timestamp.InMicroseconds(), buffer->IsKeyframe(),
+        mOutputBufferDoneCb.Run(encodedDataSize, timestamp.InMicroseconds(), buffer->isKeyframe(),
                                 std::move(bitstream_buffer));
     }
 
     // If the buffer is marked as last and we were flushing the encoder, flushing is now done.
-    if ((mState == State::DRAINING) && buffer->IsLast()) {
+    if ((mState == State::DRAINING) && buffer->isLast()) {
         onDrainDone(true);
         // Start the encoder again.
         struct v4l2_encoder_cmd cmd;
         memset(&cmd, 0, sizeof(v4l2_encoder_cmd));
         cmd.cmd = V4L2_ENC_CMD_START;
-        if (mDevice->Ioctl(VIDIOC_ENCODER_CMD, &cmd) != 0) {
+        if (mDevice->ioctl(VIDIOC_ENCODER_CMD, &cmd) != 0) {
             ALOGE("Failed to restart encoder after draining (V4L2_ENC_CMD_START)");
             onError();
             return false;
@@ -909,55 +906,55 @@ bool V4L2Encoder::dequeueOutputBuffer() {
 bool V4L2Encoder::createInputBuffers() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(!mInputQueue->IsStreaming());
+    ALOG_ASSERT(!mInputQueue->isStreaming());
     ALOG_ASSERT(mInputBuffers.empty());
 
     // No memory is allocated here, we just generate a list of buffers on the input queue, which
     // will hold memory handles to the real buffers.
-    if (mInputQueue->AllocateBuffers(kInputBufferCount, V4L2_MEMORY_DMABUF) < kInputBufferCount) {
+    if (mInputQueue->allocateBuffers(kInputBufferCount, V4L2_MEMORY_DMABUF) < kInputBufferCount) {
         ALOGE("Failed to create V4L2 input buffers.");
         return false;
     }
 
-    mInputBuffers.resize(mInputQueue->AllocatedBuffersCount());
+    mInputBuffers.resize(mInputQueue->allocatedBuffersCount());
     return true;
 }
 
 bool V4L2Encoder::createOutputBuffers() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(!mOutputQueue->IsStreaming());
+    ALOG_ASSERT(!mOutputQueue->isStreaming());
     ALOG_ASSERT(mOutputBuffers.empty());
 
     // No memory is allocated here, we just generate a list of buffers on the output queue, which
     // will hold memory handles to the real buffers.
-    if (mOutputQueue->AllocateBuffers(kOutputBufferCount, V4L2_MEMORY_DMABUF) <
+    if (mOutputQueue->allocateBuffers(kOutputBufferCount, V4L2_MEMORY_DMABUF) <
         kOutputBufferCount) {
         ALOGE("Failed to create V4L2 output buffers.");
         return false;
     }
 
-    mOutputBuffers.resize(mOutputQueue->AllocatedBuffersCount());
+    mOutputBuffers.resize(mOutputQueue->allocatedBuffersCount());
     return true;
 }
 
 void V4L2Encoder::destroyInputBuffers() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(!mInputQueue->IsStreaming());
+    ALOG_ASSERT(!mInputQueue->isStreaming());
 
-    if (!mInputQueue || mInputQueue->AllocatedBuffersCount() == 0) return;
-    mInputQueue->DeallocateBuffers();
+    if (!mInputQueue || mInputQueue->allocatedBuffersCount() == 0) return;
+    mInputQueue->deallocateBuffers();
     mInputBuffers.clear();
 }
 
 void V4L2Encoder::destroyOutputBuffers() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
-    ALOG_ASSERT(!mOutputQueue->IsStreaming());
+    ALOG_ASSERT(!mOutputQueue->isStreaming());
 
-    if (!mOutputQueue || mOutputQueue->AllocatedBuffersCount() == 0) return;
-    mOutputQueue->DeallocateBuffers();
+    if (!mOutputQueue || mOutputQueue->allocatedBuffersCount() == 0) return;
+    mOutputQueue->deallocateBuffers();
     mOutputBuffers.clear();
 }
 
