@@ -7,7 +7,6 @@
 #include <linux/videodev2.h>
 
 #include <utils/Log.h>
-#include <video_pixel_format.h>
 
 namespace android {
 
