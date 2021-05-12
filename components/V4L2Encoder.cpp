@@ -727,11 +727,10 @@ bool V4L2Encoder::enqueueInputBuffer(std::unique_ptr<InputFrame> frame) {
         // buffer should be sum of each color planes' size.
         size_t bytesUsed = 0;
         if (planes.size() == 1) {
-            bytesUsed = media::VideoFrame::AllocationSize(format, mInputLayout->coded_size());
+            bytesUsed = media::AllocationSize(format, mInputLayout->coded_size());
         } else {
             bytesUsed = ::base::checked_cast<size_t>(
-                    getArea(media::VideoFrame::PlaneSize(format, i, mInputLayout->coded_size()))
-                            .value());
+                    getArea(media::PlaneSize(format, i, mInputLayout->coded_size())).value());
         }
 
         // TODO(crbug.com/901264): The way to pass an offset within a DMA-buf is not defined
