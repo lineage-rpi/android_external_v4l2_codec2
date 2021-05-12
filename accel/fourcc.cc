@@ -19,7 +19,7 @@ Fourcc::~Fourcc() = default;
 Fourcc& Fourcc::operator=(const Fourcc& other) = default;
 
 // static
-base::Optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
+std::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
   switch (fourcc) {
     case AR24:
     case AB24:
@@ -41,7 +41,7 @@ base::Optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
       return Fourcc(static_cast<Value>(fourcc));
   }
   DVLOGF(3) << "Unmapped fourcc: " << FourccToString(fourcc);
-  return base::nullopt;
+  return std::nullopt;
 }
 
 // static
@@ -182,7 +182,7 @@ VideoPixelFormat Fourcc::ToVideoPixelFormat() const {
 }
 
 // static
-base::Optional<Fourcc> Fourcc::FromV4L2PixFmt(uint32_t v4l2_pix_fmt) {
+std::optional<Fourcc> Fourcc::FromV4L2PixFmt(uint32_t v4l2_pix_fmt) {
   // We can do that because we adopt the same internal definition of Fourcc as
   // V4L2.
   return FromUint32(v4l2_pix_fmt);
