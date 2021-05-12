@@ -19,15 +19,12 @@
 #include <video_codecs.h>
 #include <video_frame_layout.h>
 
-namespace media {
-class V4L2Device;
-class V4L2Queue;
-}  // namespace media
-
 namespace android {
 
 struct BitstreamBuffer;
 struct VideoFramePlane;
+class V4L2Device;
+class V4L2Queue;
 
 class V4L2Encoder : public VideoEncoder {
 public:
@@ -163,9 +160,9 @@ private:
     uint32_t mKeyFrameCounter = 0;
 
     // The V4L2 device and associated queues used to interact with the device.
-    scoped_refptr<media::V4L2Device> mDevice;
-    scoped_refptr<media::V4L2Queue> mInputQueue;
-    scoped_refptr<media::V4L2Queue> mOutputQueue;
+    scoped_refptr<V4L2Device> mDevice;
+    scoped_refptr<V4L2Queue> mInputQueue;
+    scoped_refptr<V4L2Queue> mOutputQueue;
 
     // List of frames associated with each buffer in the V4L2 device input queue.
     std::vector<std::unique_ptr<InputFrame>> mInputBuffers;
