@@ -16,7 +16,6 @@
 #include <ui/Size.h>
 
 #include <v4l2_codec2/components/VideoEncoder.h>
-#include <video_codecs.h>
 #include <video_frame_layout.h>
 
 namespace android {
@@ -33,10 +32,10 @@ public:
     static constexpr size_t kOutputBufferCount = 2;
 
     static std::unique_ptr<VideoEncoder> create(
-            media::VideoCodecProfile profile, std::optional<uint8_t> level,
-            const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
-            FetchOutputBufferCB fetchOutputBufferCb, InputBufferDoneCB inputBufferDoneCb,
-            OutputBufferDoneCB outputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb,
+            C2Config::profile_t profile, std::optional<uint8_t> level, const ui::Size& visibleSize,
+            uint32_t stride, uint32_t keyFramePeriod, FetchOutputBufferCB fetchOutputBufferCb,
+            InputBufferDoneCB inputBufferDoneCb, OutputBufferDoneCB outputBufferDoneCb,
+            DrainDoneCB drainDoneCb, ErrorCB errorCb,
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~V4L2Encoder() override;
 
@@ -80,7 +79,7 @@ private:
                 OutputBufferDoneCB mOutputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb);
 
     // Initialize the V4L2 encoder for specified parameters.
-    bool initialize(media::VideoCodecProfile outputProfile, std::optional<uint8_t> level,
+    bool initialize(C2Config::profile_t outputProfile, std::optional<uint8_t> level,
                     const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod);
 
     // Handle the next encode request on the queue.
@@ -95,12 +94,12 @@ private:
     // Configure input format on the V4L2 device.
     bool configureInputFormat(media::VideoPixelFormat inputFormat, uint32_t stride);
     // Configure output format on the V4L2 device.
-    bool configureOutputFormat(media::VideoCodecProfile outputProfile);
+    bool configureOutputFormat(C2Config::profile_t outputProfile);
     // Configure required and optional controls on the V4L2 device.
-    bool configureDevice(media::VideoCodecProfile outputProfile,
+    bool configureDevice(C2Config::profile_t outputProfile,
                          std::optional<const uint8_t> outputH264Level);
     // Configure required and optional H.264 controls on the V4L2 device.
-    bool configureH264(media::VideoCodecProfile outputProfile,
+    bool configureH264(C2Config::profile_t outputProfile,
                        std::optional<const uint8_t> outputH264Level);
 
     // Attempt to start the V4L2 device poller.

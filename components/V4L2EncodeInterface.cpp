@@ -19,7 +19,6 @@
 #include <v4l2_codec2/common/V4L2ComponentCommon.h>
 #include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/common/VideoTypes.h>
-#include <video_codecs.h>
 
 using android::hardware::graphics::common::V1_0::BufferUsage;
 
@@ -42,46 +41,6 @@ constexpr uint32_t kDefaultBitrate = 64000;
 // The maximal output bitrate in bits per second. It's the max bitrate of AVC Level4.1.
 // TODO: increase this in the future for supporting higher level/resolution encoding.
 constexpr uint32_t kMaxBitrate = 50000000;
-
-C2Config::profile_t videoCodecProfileToC2Profile(media::VideoCodecProfile profile) {
-    switch (profile) {
-    case media::VideoCodecProfile::H264PROFILE_BASELINE:
-        return C2Config::PROFILE_AVC_BASELINE;
-    case media::VideoCodecProfile::H264PROFILE_MAIN:
-        return C2Config::PROFILE_AVC_MAIN;
-    case media::VideoCodecProfile::H264PROFILE_EXTENDED:
-        return C2Config::PROFILE_AVC_EXTENDED;
-    case media::VideoCodecProfile::H264PROFILE_HIGH:
-        return C2Config::PROFILE_AVC_HIGH;
-    case media::VideoCodecProfile::H264PROFILE_HIGH10PROFILE:
-        return C2Config::PROFILE_AVC_HIGH_10;
-    case media::VideoCodecProfile::H264PROFILE_HIGH422PROFILE:
-        return C2Config::PROFILE_AVC_HIGH_422;
-    case media::VideoCodecProfile::H264PROFILE_HIGH444PREDICTIVEPROFILE:
-        return C2Config::PROFILE_AVC_HIGH_444_PREDICTIVE;
-    case media::VideoCodecProfile::H264PROFILE_SCALABLEBASELINE:
-        return C2Config::PROFILE_AVC_SCALABLE_BASELINE;
-    case media::VideoCodecProfile::H264PROFILE_SCALABLEHIGH:
-        return C2Config::PROFILE_AVC_SCALABLE_HIGH;
-    case media::VideoCodecProfile::H264PROFILE_STEREOHIGH:
-        return C2Config::PROFILE_AVC_STEREO_HIGH;
-    case media::VideoCodecProfile::H264PROFILE_MULTIVIEWHIGH:
-        return C2Config::PROFILE_AVC_MULTIVIEW_HIGH;
-    case media::VideoCodecProfile::VP8PROFILE_ANY:
-        return C2Config::PROFILE_VP8_0;
-    case media::VideoCodecProfile::VP9PROFILE_PROFILE0:
-        return C2Config::PROFILE_VP9_0;
-    case media::VideoCodecProfile::VP9PROFILE_PROFILE1:
-        return C2Config::PROFILE_VP9_1;
-    case media::VideoCodecProfile::VP9PROFILE_PROFILE2:
-        return C2Config::PROFILE_VP9_2;
-    case media::VideoCodecProfile::VP9PROFILE_PROFILE3:
-        return C2Config::PROFILE_VP9_3;
-    default:
-        ALOGE("Unrecognizable profile (value = %d)...", profile);
-        return C2Config::PROFILE_UNUSED;
-    }
-}
 
 std::optional<VideoCodec> getCodecFromComponentName(const std::string& name) {
     if (name == V4L2ComponentName::kH264Encoder) return VideoCodec::H264;
@@ -305,13 +264,12 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
     std::vector<unsigned int> profiles;
     ui::Size maxSize;
     for (const auto& supportedProfile : supported_profiles) {
-        C2Config::profile_t profile = videoCodecProfileToC2Profile(supportedProfile.profile);
-        if (!IsValidProfileForCodec(codec.value(), profile)) {
+        if (!IsValidProfileForCodec(codec.value(), supportedProfile.profile)) {
             continue;  // Ignore unrecognizable or unsupported profiles.
         }
-        ALOGV("Queried c2_profile = 0x%x : max_size = %d x %d", profile,
+        ALOGV("Queried c2_profile = 0x%x : max_size = %d x %d", supportedProfile.profile,
               supportedProfile.max_resolution.width, supportedProfile.max_resolution.height);
-        profiles.push_back(static_cast<unsigned int>(profile));
+        profiles.push_back(static_cast<unsigned int>(supportedProfile.profile));
         maxSize.setWidth(std::max(maxSize.width, supportedProfile.max_resolution.width));
         maxSize.setHeight(std::max(maxSize.height, supportedProfile.max_resolution.height));
     }

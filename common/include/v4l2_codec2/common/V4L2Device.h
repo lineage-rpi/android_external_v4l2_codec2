@@ -16,6 +16,7 @@
 #include <optional>
 #include <vector>
 
+#include <C2Config.h>
 #include <base/containers/flat_map.h>
 #include <base/files/scoped_file.h>
 #include <base/memory/ref_counted.h>
@@ -24,7 +25,6 @@
 #include <ui/Size.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
 #include <v4l2_codec2/common/VideoTypes.h>
-#include <video_codecs.h>
 #include <video_frame.h>
 #include <video_frame_layout.h>
 #include <video_pixel_format.h>
@@ -323,7 +323,7 @@ class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 public:
     // Specification of an encoding profile supported by an encoder.
     struct SupportedEncodeProfile {
-        media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
+        C2Config::profile_t profile = C2Config::PROFILE_UNUSED;
         ui::Size min_resolution;
         ui::Size max_resolution;
         uint32_t max_framerate_numerator = 0;
@@ -334,7 +334,7 @@ public:
     // Specification of a decoding profile supported by an decoder.
     // |max_resolution| and |min_resolution| are inclusive.
     struct SupportedDecodeProfile {
-        media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
+        C2Config::profile_t profile = C2Config::PROFILE_UNUSED;
         ui::Size max_resolution;
         ui::Size min_resolution;
         bool encrypted_only = false;
@@ -343,17 +343,14 @@ public:
 
     // Utility format conversion functions
     // If there is no corresponding single- or multi-planar format, returns 0.
-    static uint32_t videoCodecProfileToV4L2PixFmt(media::VideoCodecProfile profile,
-                                                  bool sliceBased);
-    static media::VideoCodecProfile v4L2ProfileToVideoCodecProfile(VideoCodec codec,
-                                                                   uint32_t profile);
-    std::vector<media::VideoCodecProfile> v4L2PixFmtToVideoCodecProfiles(uint32_t pixFmt,
-                                                                         bool isEncoder);
+    static uint32_t C2ProfileToV4L2PixFmt(C2Config::profile_t profile, bool sliceBased);
+    static C2Config::profile_t v4L2ProfileToC2Profile(VideoCodec codec, uint32_t profile);
+    std::vector<C2Config::profile_t> v4L2PixFmtToC2Profiles(uint32_t pixFmt, bool isEncoder);
     // Calculates the largest plane's allocation size requested by a V4L2 device.
     static ui::Size allocatedSizeFromV4L2Format(const struct v4l2_format& format);
 
     // Convert required H264 profile and level to V4L2 enums.
-    static int32_t videoCodecProfileToV4L2H264Profile(media::VideoCodecProfile profile);
+    static int32_t c2ProfileToV4L2H264Profile(C2Config::profile_t profile);
     static int32_t h264LevelIdcToV4L2H264Level(uint8_t levelIdc);
 
     // Converts v4l2_memory to a string.
