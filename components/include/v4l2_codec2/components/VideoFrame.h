@@ -14,7 +14,7 @@
 
 namespace android {
 
-// Wrap C2GraphicBlock and provide essiential information from C2GraphicBlock.
+// Wrap C2GraphicBlock and provide essential information from C2GraphicBlock.
 class VideoFrame {
 public:
     // Create the instance from C2GraphicBlock. return nullptr if any error occurs.
