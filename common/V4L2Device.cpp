@@ -1215,129 +1215,6 @@ std::vector<uint32_t> V4L2Device::preferredInputFormat(Type type) {
     return {};
 }
 
-media::VideoDecodeAccelerator::SupportedProfiles V4L2Device::getSupportedDecodeProfiles(
-        const size_t numFormats, const uint32_t pixelFormats[]) {
-    media::VideoDecodeAccelerator::SupportedProfiles supportedProfiles;
-
-    Type type = Type::kDecoder;
-    const auto& devices = getDevicesForType(type);
-    for (const auto& device : devices) {
-        if (!openDevicePath(device.first, type)) {
-            ALOGV("Failed opening %s", device.first.c_str());
-            continue;
-        }
-
-        const auto& profiles = enumerateSupportedDecodeProfiles(numFormats, pixelFormats);
-        supportedProfiles.insert(supportedProfiles.end(), profiles.begin(), profiles.end());
-        closeDevice();
-    }
-
-    return supportedProfiles;
-}
-
-media::VideoEncodeAccelerator::SupportedProfiles V4L2Device::getSupportedEncodeProfiles() {
-    media::VideoEncodeAccelerator::SupportedProfiles supportedProfiles;
-
-    Type type = Type::kEncoder;
-    const auto& devices = getDevicesForType(type);
-    for (const auto& device : devices) {
-        if (!openDevicePath(device.first, type)) {
-            ALOGV("Failed opening %s", device.first.c_str());
-            continue;
-        }
-
-        const auto& profiles = enumerateSupportedEncodeProfiles();
-        supportedProfiles.insert(supportedProfiles.end(), profiles.begin(), profiles.end());
-        closeDevice();
-    }
-
-    return supportedProfiles;
-}
-
-bool V4L2Device::openDevicePath(const std::string& path, Type /*type*/) {
-    ALOG_ASSERT(!mDeviceFd.is_valid());
-
-    mDeviceFd.reset(HANDLE_EINTR(::open(path.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC)));
-    if (!mDeviceFd.is_valid()) return false;
-
-    return true;
-}
-
-void V4L2Device::closeDevice() {
-    ALOGV("%s()", __func__);
-
-    mDeviceFd.reset();
-}
-
-void V4L2Device::enumerateDevicesForType(Type type) {
-    // video input/output devices are registered as /dev/videoX in V4L2.
-    static const std::string kVideoDevicePattern = "/dev/video";
-
-    std::string devicePattern;
-    v4l2_buf_type bufType;
-    switch (type) {
-    case Type::kDecoder:
-        devicePattern = kVideoDevicePattern;
-        bufType = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-        break;
-    case Type::kEncoder:
-        devicePattern = kVideoDevicePattern;
-        bufType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-        break;
-    default:
-        ALOGE("Only decoder and encoder types are supported!!");
-        return;
-    }
-
-    std::vector<std::string> candidatePaths;
-
-    // TODO(posciak): Remove this legacy unnumbered device once all platforms are updated to use
-    // numbered devices.
-    candidatePaths.push_back(devicePattern);
-
-    // We are sandboxed, so we can't query directory contents to check which devices are actually
-    // available. Try to open the first 10; if not present, we will just fail to open immediately.
-    for (int i = 0; i < 10; ++i) {
-        candidatePaths.push_back(base::StringPrintf("%s%d", devicePattern.c_str(), i));
-    }
-
-    Devices devices;
-    for (const auto& path : candidatePaths) {
-        if (!openDevicePath(path, type)) {
-            continue;
-        }
-
-        const auto& supportedPixelformats = enumerateSupportedPixelformats(bufType);
-        if (!supportedPixelformats.empty()) {
-            ALOGV("Found device: %s", path.c_str());
-            devices.push_back(std::make_pair(path, supportedPixelformats));
-        }
-
-        closeDevice();
-    }
-
-    ALOG_ASSERT(mDevicesByType.count(type) == 0u);
-    mDevicesByType[type] = devices;
-}
-
-const V4L2Device::Devices& V4L2Device::getDevicesForType(Type type) {
-    if (mDevicesByType.count(type) == 0) enumerateDevicesForType(type);
-
-    ALOG_ASSERT(mDevicesByType.count(type) != 0u);
-    return mDevicesByType[type];
-}
-
-std::string V4L2Device::getDevicePathFor(Type type, uint32_t pixFmt) {
-    const Devices& devices = getDevicesForType(type);
-
-    for (const auto& device : devices) {
-        if (std::find(device.second.begin(), device.second.end(), pixFmt) != device.second.end())
-            return device.first;
-    }
-
-    return std::string();
-}
-
 // static
 uint32_t V4L2Device::videoCodecProfileToV4L2PixFmt(media::VideoCodecProfile profile,
                                                    bool sliceBased) {
@@ -1882,9 +1759,48 @@ std::vector<uint32_t> V4L2Device::enumerateSupportedPixelformats(v4l2_buf_type b
     return pixelFormats;
 }
 
-media::VideoDecodeAccelerator::SupportedProfiles V4L2Device::enumerateSupportedDecodeProfiles(
+V4L2Device::SupportedDecodeProfiles V4L2Device::getSupportedDecodeProfiles(
         const size_t numFormats, const uint32_t pixelFormats[]) {
-    media::VideoDecodeAccelerator::SupportedProfiles profiles;
+    SupportedDecodeProfiles supportedProfiles;
+
+    Type type = Type::kDecoder;
+    const auto& devices = getDevicesForType(type);
+    for (const auto& device : devices) {
+        if (!openDevicePath(device.first, type)) {
+            ALOGV("Failed opening %s", device.first.c_str());
+            continue;
+        }
+
+        const auto& profiles = enumerateSupportedDecodeProfiles(numFormats, pixelFormats);
+        supportedProfiles.insert(supportedProfiles.end(), profiles.begin(), profiles.end());
+        closeDevice();
+    }
+
+    return supportedProfiles;
+}
+
+V4L2Device::SupportedEncodeProfiles V4L2Device::getSupportedEncodeProfiles() {
+    SupportedEncodeProfiles supportedProfiles;
+
+    Type type = Type::kEncoder;
+    const auto& devices = getDevicesForType(type);
+    for (const auto& device : devices) {
+        if (!openDevicePath(device.first, type)) {
+            ALOGV("Failed opening %s", device.first.c_str());
+            continue;
+        }
+
+        const auto& profiles = enumerateSupportedEncodeProfiles();
+        supportedProfiles.insert(supportedProfiles.end(), profiles.begin(), profiles.end());
+        closeDevice();
+    }
+
+    return supportedProfiles;
+}
+
+V4L2Device::SupportedDecodeProfiles V4L2Device::enumerateSupportedDecodeProfiles(
+        const size_t numFormats, const uint32_t pixelFormats[]) {
+    SupportedDecodeProfiles profiles;
 
     const auto& supportedPixelformats =
             enumerateSupportedPixelformats(V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
@@ -1894,7 +1810,7 @@ media::VideoDecodeAccelerator::SupportedProfiles V4L2Device::enumerateSupportedD
             pixelFormats + numFormats)
             continue;
 
-        media::VideoDecodeAccelerator::SupportedProfile profile;
+        SupportedDecodeProfile profile;
         getSupportedResolution(pixelFormat, &profile.min_resolution, &profile.max_resolution);
 
         const auto videoCodecProfiles = v4L2PixFmtToVideoCodecProfiles(pixelFormat, false);
@@ -1913,14 +1829,14 @@ media::VideoDecodeAccelerator::SupportedProfiles V4L2Device::enumerateSupportedD
     return profiles;
 }
 
-media::VideoEncodeAccelerator::SupportedProfiles V4L2Device::enumerateSupportedEncodeProfiles() {
-    media::VideoEncodeAccelerator::SupportedProfiles profiles;
+V4L2Device::SupportedEncodeProfiles V4L2Device::enumerateSupportedEncodeProfiles() {
+    SupportedEncodeProfiles profiles;
 
     const auto& supportedPixelformats =
             enumerateSupportedPixelformats(V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 
     for (const auto& pixelformat : supportedPixelformats) {
-        media::VideoEncodeAccelerator::SupportedProfile profile;
+        SupportedEncodeProfile profile;
         profile.max_framerate_numerator = 30;
         profile.max_framerate_denominator = 1;
         media::Size minResolution;
@@ -2014,6 +1930,90 @@ bool V4L2Device::hasCapabilities(uint32_t capabilities) {
     }
 
     return (caps.capabilities & capabilities) == capabilities;
+}
+
+bool V4L2Device::openDevicePath(const std::string& path, Type /*type*/) {
+    ALOG_ASSERT(!mDeviceFd.is_valid());
+
+    mDeviceFd.reset(HANDLE_EINTR(::open(path.c_str(), O_RDWR | O_NONBLOCK | O_CLOEXEC)));
+    if (!mDeviceFd.is_valid()) return false;
+
+    return true;
+}
+
+void V4L2Device::closeDevice() {
+    ALOGV("%s()", __func__);
+
+    mDeviceFd.reset();
+}
+
+void V4L2Device::enumerateDevicesForType(Type type) {
+    // video input/output devices are registered as /dev/videoX in V4L2.
+    static const std::string kVideoDevicePattern = "/dev/video";
+
+    std::string devicePattern;
+    v4l2_buf_type bufType;
+    switch (type) {
+    case Type::kDecoder:
+        devicePattern = kVideoDevicePattern;
+        bufType = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+        break;
+    case Type::kEncoder:
+        devicePattern = kVideoDevicePattern;
+        bufType = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+        break;
+    default:
+        ALOGE("Only decoder and encoder types are supported!!");
+        return;
+    }
+
+    std::vector<std::string> candidatePaths;
+
+    // TODO(posciak): Remove this legacy unnumbered device once all platforms are updated to use
+    // numbered devices.
+    candidatePaths.push_back(devicePattern);
+
+    // We are sandboxed, so we can't query directory contents to check which devices are actually
+    // available. Try to open the first 10; if not present, we will just fail to open immediately.
+    for (int i = 0; i < 10; ++i) {
+        candidatePaths.push_back(base::StringPrintf("%s%d", devicePattern.c_str(), i));
+    }
+
+    Devices devices;
+    for (const auto& path : candidatePaths) {
+        if (!openDevicePath(path, type)) {
+            continue;
+        }
+
+        const auto& supportedPixelformats = enumerateSupportedPixelformats(bufType);
+        if (!supportedPixelformats.empty()) {
+            ALOGV("Found device: %s", path.c_str());
+            devices.push_back(std::make_pair(path, supportedPixelformats));
+        }
+
+        closeDevice();
+    }
+
+    ALOG_ASSERT(mDevicesByType.count(type) == 0u);
+    mDevicesByType[type] = devices;
+}
+
+const V4L2Device::Devices& V4L2Device::getDevicesForType(Type type) {
+    if (mDevicesByType.count(type) == 0) enumerateDevicesForType(type);
+
+    ALOG_ASSERT(mDevicesByType.count(type) != 0u);
+    return mDevicesByType[type];
+}
+
+std::string V4L2Device::getDevicePathFor(Type type, uint32_t pixFmt) {
+    const Devices& devices = getDevicesForType(type);
+
+    for (const auto& device : devices) {
+        if (std::find(device.second.begin(), device.second.end(), pixFmt) != device.second.end())
+            return device.first;
+    }
+
+    return std::string();
 }
 
 }  // namespace android
