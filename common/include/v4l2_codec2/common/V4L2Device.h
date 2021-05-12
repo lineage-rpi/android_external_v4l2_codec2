@@ -24,8 +24,6 @@
 #include <size.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
 #include <video_codecs.h>
-#include <video_decode_accelerator.h>
-#include <video_encode_accelerator.h>
 #include <video_frame.h>
 #include <video_frame_layout.h>
 #include <video_pixel_format.h>
@@ -322,6 +320,26 @@ private:
 
 class V4L2Device : public base::RefCountedThreadSafe<V4L2Device> {
 public:
+    // Specification of an encoding profile supported by an encoder.
+    struct SupportedEncodeProfile {
+        media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
+        media::Size min_resolution;
+        media::Size max_resolution;
+        uint32_t max_framerate_numerator = 0;
+        uint32_t max_framerate_denominator = 0;
+    };
+    using SupportedEncodeProfiles = std::vector<SupportedEncodeProfile>;
+
+    // Specification of a decoding profile supported by an decoder.
+    // |max_resolution| and |min_resolution| are inclusive.
+    struct SupportedDecodeProfile {
+        media::VideoCodecProfile profile = media::VIDEO_CODEC_PROFILE_UNKNOWN;
+        media::Size max_resolution;
+        media::Size min_resolution;
+        bool encrypted_only = false;
+    };
+    using SupportedDecodeProfiles = std::vector<SupportedDecodeProfile>;
+
     // Utility format conversion functions
     // If there is no corresponding single- or multi-planar format, returns 0.
     static uint32_t videoCodecProfileToV4L2PixFmt(media::VideoCodecProfile profile,
@@ -415,11 +433,11 @@ public:
 
     // Return supported profiles for decoder, including only profiles for given fourcc
     // |pixelFormats|.
-    media::VideoDecodeAccelerator::SupportedProfiles getSupportedDecodeProfiles(
-            const size_t numFormats, const uint32_t pixelFormats[]);
+    SupportedDecodeProfiles getSupportedDecodeProfiles(const size_t numFormats,
+                                                       const uint32_t pixelFormats[]);
 
     // Return supported profiles for encoder.
-    media::VideoEncodeAccelerator::SupportedProfiles getSupportedEncodeProfiles();
+    SupportedEncodeProfiles getSupportedEncodeProfiles();
 
     // Start polling on this V4L2Device. |eventCallback| will be posted to the caller's sequence if
     // a buffer is ready to be dequeued and/or a V4L2 event has been posted. |errorCallback| will
@@ -456,10 +474,10 @@ private:
     V4L2Device(const V4L2Device&) = delete;
     V4L2Device& operator=(const V4L2Device&) = delete;
 
-    media::VideoDecodeAccelerator::SupportedProfiles enumerateSupportedDecodeProfiles(
-            const size_t numFormats, const uint32_t pixelFormats[]);
+    SupportedDecodeProfiles enumerateSupportedDecodeProfiles(const size_t numFormats,
+                                                             const uint32_t pixelFormats[]);
 
-    media::VideoEncodeAccelerator::SupportedProfiles enumerateSupportedEncodeProfiles();
+    SupportedEncodeProfiles enumerateSupportedEncodeProfiles();
 
     // Open device node for |path| as a device of |type|.
     bool openDevicePath(const std::string& path, Type type);
