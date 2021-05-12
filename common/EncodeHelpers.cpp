@@ -18,46 +18,6 @@
 
 namespace android {
 
-media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profile) {
-    switch (profile) {
-    case C2Config::PROFILE_AVC_BASELINE:
-        return media::VideoCodecProfile::H264PROFILE_BASELINE;
-    case C2Config::PROFILE_AVC_MAIN:
-        return media::VideoCodecProfile::H264PROFILE_MAIN;
-    case C2Config::PROFILE_AVC_EXTENDED:
-        return media::VideoCodecProfile::H264PROFILE_EXTENDED;
-    case C2Config::PROFILE_AVC_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_HIGH;
-    case C2Config::PROFILE_AVC_HIGH_10:
-        return media::VideoCodecProfile::H264PROFILE_HIGH10PROFILE;
-    case C2Config::PROFILE_AVC_HIGH_422:
-        return media::VideoCodecProfile::H264PROFILE_HIGH422PROFILE;
-    case C2Config::PROFILE_AVC_HIGH_444_PREDICTIVE:
-        return media::VideoCodecProfile::H264PROFILE_HIGH444PREDICTIVEPROFILE;
-    case C2Config::PROFILE_AVC_SCALABLE_BASELINE:
-        return media::VideoCodecProfile::H264PROFILE_SCALABLEBASELINE;
-    case C2Config::PROFILE_AVC_SCALABLE_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_SCALABLEHIGH;
-    case C2Config::PROFILE_AVC_STEREO_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_STEREOHIGH;
-    case C2Config::PROFILE_AVC_MULTIVIEW_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_MULTIVIEWHIGH;
-    case C2Config::PROFILE_VP8_0:
-        return media::VideoCodecProfile::VP8PROFILE_ANY;
-    case C2Config::PROFILE_VP9_0:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE0;
-    case C2Config::PROFILE_VP9_1:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE1;
-    case C2Config::PROFILE_VP9_2:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE2;
-    case C2Config::PROFILE_VP9_3:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE3;
-    default:
-        ALOGE("Unrecognizable C2 profile (value = 0x%x)...", profile);
-        return media::VideoCodecProfile::VIDEO_CODEC_PROFILE_UNKNOWN;
-    }
-}
-
 uint8_t c2LevelToV4L2Level(C2Config::level_t level) {
     switch (level) {
     case C2Config::LEVEL_AVC_1:

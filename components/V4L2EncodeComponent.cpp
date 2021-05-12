@@ -620,11 +620,11 @@ bool V4L2EncodeComponent::initializeEncoder() {
     mCSDSubmitted = false;
 
     // Get the requested profile and level.
-    media::VideoCodecProfile outputProfile =
-            c2ProfileToVideoCodecProfile(mInterface->getOutputProfile());
+    C2Config::profile_t outputProfile = mInterface->getOutputProfile();
 
     std::optional<uint8_t> h264Level;
-    if (outputProfile >= media::H264PROFILE_MIN && outputProfile <= media::H264PROFILE_MAX) {
+    if (outputProfile >= C2Config::PROFILE_AVC_BASELINE &&
+        outputProfile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH) {
         h264Level = c2LevelToV4L2Level(mInterface->getOutputLevel());
     }
 
@@ -648,7 +648,7 @@ bool V4L2EncodeComponent::initializeEncoder() {
             ::base::BindRepeating(&V4L2EncodeComponent::reportError, mWeakThis, C2_CORRUPTED),
             mEncoderTaskRunner);
     if (!mEncoder) {
-        ALOGE("Failed to create V4L2Encoder (profile: %s)", GetProfileName(outputProfile).c_str());
+        ALOGE("Failed to create V4L2Encoder (profile: %s)", profileToString(outputProfile));
         return false;
     }
 
