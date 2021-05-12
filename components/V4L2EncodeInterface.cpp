@@ -297,8 +297,7 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
 
     media::VideoCodec codec =
             getCodecFromComponentName(name).value_or(media::VideoCodec::kUnknownVideoCodec);
-    media::VideoEncodeAccelerator::SupportedProfiles supported_profiles =
-            device->getSupportedEncodeProfiles();
+    V4L2Device::SupportedEncodeProfiles supported_profiles = device->getSupportedEncodeProfiles();
 
     // Compile the list of supported profiles. In the case of VP8 only a single profile is
     // supported, which is not defined by the C2 framework.
@@ -308,7 +307,7 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
     media::Size maxSize;
     if (codec == media::VideoCodec::kCodecVP8) {
         auto it = find_if(supported_profiles.begin(), supported_profiles.end(),
-                          [](const media::VideoEncodeAccelerator::SupportedProfile& profile) {
+                          [](const V4L2Device::SupportedEncodeProfile& profile) {
                               return profile.profile == media::VideoCodecProfile::VP8PROFILE_MIN;
                           });
         if (it == supported_profiles.end()) {
