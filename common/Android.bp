@@ -31,6 +31,7 @@ cc_library {
         "libchrome",
         "libcutils",
         "liblog",
+        "libstagefright_foundation",
         "libui",
         "libutils",
         "libv4l2_codec2_accel"
