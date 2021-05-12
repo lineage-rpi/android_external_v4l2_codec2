@@ -67,6 +67,8 @@ C2Config::profile_t videoCodecProfileToC2Profile(media::VideoCodecProfile profil
         return C2Config::PROFILE_AVC_STEREO_HIGH;
     case media::VideoCodecProfile::H264PROFILE_MULTIVIEWHIGH:
         return C2Config::PROFILE_AVC_MULTIVIEW_HIGH;
+    case media::VideoCodecProfile::VP8PROFILE_ANY:
+        return C2Config::PROFILE_VP8_0;
     case media::VideoCodecProfile::VP9PROFILE_PROFILE0:
         return C2Config::PROFILE_VP9_0;
     case media::VideoCodecProfile::VP9PROFILE_PROFILE1:
@@ -96,6 +98,8 @@ bool IsValidProfileForCodec(VideoCodec codec, C2Config::profile_t profile) {
     case VideoCodec::H264:
         return ((profile >= C2Config::PROFILE_AVC_BASELINE) &&
                 (profile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH));
+    case VideoCodec::VP8:
+        return ((profile >= C2Config::PROFILE_VP8_0) && (profile <= C2Config::PROFILE_VP8_3));
     case VideoCodec::VP9:
         return ((profile >= C2Config::PROFILE_VP9_0) && (profile <= C2Config::PROFILE_VP9_3));
     default:
@@ -295,41 +299,27 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
 
     V4L2Device::SupportedEncodeProfiles supported_profiles = device->getSupportedEncodeProfiles();
 
-    // Compile the list of supported profiles. In the case of VP8 only a single profile is
-    // supported, which is not defined by the C2 framework.
+    // Compile the list of supported profiles.
     // Note: unsigned int is used here, since std::vector<C2Config::profile_t> cannot convert to
     // std::vector<unsigned int> required by the c2 framework below.
     std::vector<unsigned int> profiles;
     ui::Size maxSize;
-    if (codec == VideoCodec::VP8) {
-        auto it = find_if(supported_profiles.begin(), supported_profiles.end(),
-                          [](const V4L2Device::SupportedEncodeProfile& profile) {
-                              return profile.profile == media::VideoCodecProfile::VP8PROFILE_MIN;
-                          });
-        if (it == supported_profiles.end()) {
-            ALOGE("VP8 profile not supported");
-            mInitStatus = C2_BAD_VALUE;
-            return;
+    for (const auto& supportedProfile : supported_profiles) {
+        C2Config::profile_t profile = videoCodecProfileToC2Profile(supportedProfile.profile);
+        if (!IsValidProfileForCodec(codec.value(), profile)) {
+            continue;  // Ignore unrecognizable or unsupported profiles.
         }
-        maxSize = ui::Size(it->max_resolution.width, it->max_resolution.height);
-    } else {
-        for (const auto& supportedProfile : supported_profiles) {
-            C2Config::profile_t profile = videoCodecProfileToC2Profile(supportedProfile.profile);
-            if (!IsValidProfileForCodec(codec.value(), profile)) {
-                continue;  // Ignore unrecognizable or unsupported profiles.
-            }
-            ALOGV("Queried c2_profile = 0x%x : max_size = %d x %d", profile,
-                  supportedProfile.max_resolution.width, supportedProfile.max_resolution.height);
-            profiles.push_back(static_cast<unsigned int>(profile));
-            maxSize.setWidth(std::max(maxSize.width, supportedProfile.max_resolution.width));
-            maxSize.setHeight(std::max(maxSize.height, supportedProfile.max_resolution.height));
-        }
+        ALOGV("Queried c2_profile = 0x%x : max_size = %d x %d", profile,
+              supportedProfile.max_resolution.width, supportedProfile.max_resolution.height);
+        profiles.push_back(static_cast<unsigned int>(profile));
+        maxSize.setWidth(std::max(maxSize.width, supportedProfile.max_resolution.width));
+        maxSize.setHeight(std::max(maxSize.height, supportedProfile.max_resolution.height));
+    }
 
-        if (profiles.empty()) {
-            ALOGE("No supported profiles");
-            mInitStatus = C2_BAD_VALUE;
-            return;
-        }
+    if (profiles.empty()) {
+        ALOGE("No supported profiles");
+        mInitStatus = C2_BAD_VALUE;
+        return;
     }
 
     // Special note: the order of addParameter matters if your setters are dependent on other
@@ -387,10 +377,10 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
                         .build());
     } else if (getCodecFromComponentName(name) == VideoCodec::VP8) {
         outputMime = MEDIA_MIMETYPE_VIDEO_VP8;
-        // VP8 Only has a single profile, so we'll use that when the VP8 codec is requested.
+        // VP8 doesn't have conventional profiles, we'll use profile0 if the VP8 codec is requested.
         addParameter(DefineParam(mProfileLevel, C2_PARAMKEY_PROFILE_LEVEL)
                              .withConstValue(new C2StreamProfileLevelInfo::output(
-                                     0u, C2Config::PROFILE_UNUSED, C2Config::LEVEL_UNUSED))
+                                     0u, C2Config::PROFILE_VP8_0, C2Config::LEVEL_UNUSED))
                              .build());
     } else if (getCodecFromComponentName(name) == VideoCodec::VP9) {
         outputMime = MEDIA_MIMETYPE_VIDEO_VP9;
