@@ -124,7 +124,7 @@ public:
     // Converts a VideoPixelFormat to Fourcc. Returns nullopt for invalid input. Note that a
     // VideoPixelFormat may have two Fourcc counterparts. Caller has to specify if it is for
     // single-planar or multi-planar format.
-    static std::optional<Fourcc> fromVideoPixelFormat(media::VideoPixelFormat pixelFormat,
+    static std::optional<Fourcc> fromVideoPixelFormat(VideoPixelFormat pixelFormat,
                                                       bool singlePlanar = true);
     // Converts a V4L2PixFmt to Fourcc. Returns nullopt for invalid input.
     static std::optional<Fourcc> fromV4L2PixFmt(uint32_t v4l2PixFmt);
@@ -132,7 +132,7 @@ public:
     // Value getters:
     // Returns the VideoPixelFormat counterpart of the value. Returns PIXEL_FORMAT_UNKNOWN if no
     // mapping is found.
-    media::VideoPixelFormat toVideoPixelFormat() const;
+    VideoPixelFormat toVideoPixelFormat() const;
     // Returns the V4L2PixFmt counterpart of the value. Returns 0 if no mapping is found.
     uint32_t toV4L2PixFmt() const;
 
