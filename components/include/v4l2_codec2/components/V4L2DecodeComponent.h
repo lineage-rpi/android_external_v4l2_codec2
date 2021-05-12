@@ -20,7 +20,6 @@
 #include <v4l2_codec2/components/V4L2DecodeInterface.h>
 #include <v4l2_codec2/components/VideoDecoder.h>
 #include <v4l2_codec2/components/VideoFramePool.h>
-#include <v4l2_device.h>
 
 namespace android {
 

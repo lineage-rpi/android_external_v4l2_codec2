@@ -5,7 +5,7 @@
 // Note: Added some missing defines that are only defined in newer kernel
 //       versions (e.g. V4L2_PIX_FMT_VP8_FRAME)
 
-#include "v4l2_device.h"
+#include "v4l2_codec2/common/V4L2Device.h"
 
 #include <fcntl.h>
 #include <linux/media.h>
@@ -26,9 +26,9 @@
 #include "base/thread_annotations.h"
 
 #include "color_plane_layout.h"
-#include "generic_v4l2_device.h"
 #include "macros.h"
 #include "video_pixel_format.h"
+#include "v4l2_codec2/common/GenericV4L2Device.h"
 
 // VP8 parsed frames
 #ifndef V4L2_PIX_FMT_VP8_FRAME
@@ -1250,7 +1250,7 @@ VideoCodecProfile V4L2Device::V4L2ProfileToVideoCodecProfile(VideoCodec codec,
 
 std::vector<VideoCodecProfile> V4L2Device::V4L2PixFmtToVideoCodecProfiles(
     uint32_t pix_fmt,
-    bool is_encoder) {
+    bool /*is_encoder*/) {
   auto get_supported_profiles = [this](
                                     VideoCodec codec,
                                     std::vector<VideoCodecProfile>* profiles) {
