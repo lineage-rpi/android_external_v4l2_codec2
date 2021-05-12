@@ -58,12 +58,12 @@ public:
 private:
     // Possible encoder states.
     enum class State {
-        UNINITIALIZED,              // Not initialized yet or initialization failed.
-        WAITING_FOR_INPUT,          // Waiting for work to be queued.
-        WAITING_FOR_INPUT_BUFFERS,  // Waiting for V4L2 input queue buffers.
-        ENCODING,                   // Queuing input buffers.
-        DRAINING,                   // Draining encoder.
-        ERROR,                      // Encoder encountered an error.
+        UNINITIALIZED,            // Not initialized yet or initialization failed.
+        WAITING_FOR_INPUT_FRAME,  // Waiting for frames to be queued.
+        WAITING_FOR_V4L2_BUFFER,  // Waiting for V4L2 input queue buffers.
+        ENCODING,                 // Queuing input buffers.
+        DRAINING,                 // Draining encoder.
+        ERROR,                    // Encoder encountered an error.
     };
 
     // Contains a single encode request.
