@@ -10,7 +10,7 @@
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
 
-#include "macros.h"
+#include <utils/Log.h>
 
 namespace media {
 
@@ -40,7 +40,7 @@ std::optional<Fourcc> Fourcc::FromUint32(uint32_t fourcc) {
     case MM21:
       return Fourcc(static_cast<Value>(fourcc));
   }
-  DVLOGF(3) << "Unmapped fourcc: " << FourccToString(fourcc);
+  ALOGE("Unmapped fourcc: %s", FourccToString(fourcc).c_str());
   return std::nullopt;
 }
 
@@ -130,8 +130,8 @@ base::Optional<Fourcc> Fourcc::FromVideoPixelFormat(
         break;
     }
   }
-  DVLOGF(3) << "Unmapped " << VideoPixelFormatToString(pixel_format) << " for "
-            << (single_planar ? "single-planar" : "multi-planar");
+  ALOGE("Unmapped %s for %s", VideoPixelFormatToString(pixel_format).c_str(),
+          single_planar ? "single-planar" : "multi-planar");
   return base::nullopt;
 }
 
