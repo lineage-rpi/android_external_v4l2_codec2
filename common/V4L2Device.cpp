@@ -1311,29 +1311,6 @@ std::vector<uint32_t> V4L2Device::PreferredInputFormat(Type type) {
   return {};
 }
 
-std::vector<uint32_t> V4L2Device::GetSupportedImageProcessorPixelformats(
-    v4l2_buf_type buf_type) {
-  std::vector<uint32_t> supported_pixelformats;
-
-  Type type = Type::kImageProcessor;
-  const auto& devices = GetDevicesForType(type);
-  for (const auto& device : devices) {
-    if (!OpenDevicePath(device.first, type)) {
-      VLOGF(1) << "Failed opening " << device.first;
-      continue;
-    }
-
-    std::vector<uint32_t> pixelformats =
-        EnumerateSupportedPixelformats(buf_type);
-
-    supported_pixelformats.insert(supported_pixelformats.end(),
-                                  pixelformats.begin(), pixelformats.end());
-    CloseDevice();
-  }
-
-  return supported_pixelformats;
-}
-
 VideoDecodeAccelerator::SupportedProfiles
 V4L2Device::GetSupportedDecodeProfiles(const size_t num_formats,
                                               const uint32_t pixelformats[]) {
@@ -1376,21 +1353,6 @@ V4L2Device::GetSupportedEncodeProfiles() {
   }
 
   return supported_profiles;
-}
-
-bool V4L2Device::IsImageProcessingSupported() {
-  const auto& devices = GetDevicesForType(Type::kImageProcessor);
-  return !devices.empty();
-}
-
-bool V4L2Device::IsJpegDecodingSupported() {
-  const auto& devices = GetDevicesForType(Type::kJpegDecoder);
-  return !devices.empty();
-}
-
-bool V4L2Device::IsJpegEncodingSupported() {
-  const auto& devices = GetDevicesForType(Type::kJpegEncoder);
-  return !devices.empty();
 }
 
 bool V4L2Device::OpenDevicePath(const std::string& path, Type /*type*/) {
