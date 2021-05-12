@@ -43,9 +43,6 @@ constexpr uint32_t kDefaultBitrate = 64000;
 // TODO: increase this in the future for supporting higher level/resolution encoding.
 constexpr uint32_t kMaxBitrate = 50000000;
 
-// The frame size of 1080p video.
-constexpr uint32_t kFrameSize1080P = 1920 * 1080;
-
 C2Config::profile_t videoCodecProfileToC2Profile(media::VideoCodecProfile profile) {
     switch (profile) {
     case media::VideoCodecProfile::H264PROFILE_BASELINE:
@@ -116,23 +113,16 @@ C2R V4L2EncodeInterface::H264ProfileLevelSetter(
         const C2P<C2StreamBitrateInfo::output>& bitrate) {
     static C2Config::level_t lowestConfigLevel = C2Config::LEVEL_UNUSED;
 
-    // Use at least PROFILE_AVC_MAIN as default for 1080p input video and up.
-    // TODO (b/114332827): Find root cause of bad quality of Baseline encoding.
-    C2Config::profile_t defaultMinProfile = C2Config::PROFILE_AVC_BASELINE;
-    if (videoSize.v.width * videoSize.v.height >= kFrameSize1080P) {
-        defaultMinProfile = C2Config::PROFILE_AVC_MAIN;
-    }
-
     // Adopt default minimal profile instead if the requested profile is not supported, or lower
     // than the default minimal one.
-    if (!info.F(info.v.profile).supportsAtAll(info.v.profile) ||
-        info.v.profile < defaultMinProfile) {
-        if (info.F(info.v.profile).supportsAtAll(defaultMinProfile)) {
-            ALOGV("Set profile to default (%u) instead.", defaultMinProfile);
-            info.set().profile = defaultMinProfile;
+    constexpr C2Config::profile_t minProfile = C2Config::PROFILE_AVC_BASELINE;
+    if (!info.F(info.v.profile).supportsAtAll(info.v.profile) || info.v.profile < minProfile) {
+        if (info.F(info.v.profile).supportsAtAll(minProfile)) {
+            ALOGV("Set profile to default (%u) instead.", minProfile);
+            info.set().profile = minProfile;
         } else {
             ALOGE("Unable to set either requested profile (%u) or default profile (%u).",
-                  info.v.profile, defaultMinProfile);
+                  info.v.profile, minProfile);
             return C2R(C2SettingResultBuilder::BadValue(info.F(info.v.profile)));
         }
     }
