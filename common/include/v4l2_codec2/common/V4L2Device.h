@@ -23,6 +23,7 @@
 #include <fourcc.h>
 #include <ui/Size.h>
 #include <v4l2_codec2/common/V4L2DevicePoller.h>
+#include <v4l2_codec2/common/VideoTypes.h>
 #include <video_codecs.h>
 #include <video_frame.h>
 #include <video_frame_layout.h>
@@ -344,7 +345,7 @@ public:
     // If there is no corresponding single- or multi-planar format, returns 0.
     static uint32_t videoCodecProfileToV4L2PixFmt(media::VideoCodecProfile profile,
                                                   bool sliceBased);
-    static media::VideoCodecProfile v4L2ProfileToVideoCodecProfile(media::VideoCodec codec,
+    static media::VideoCodecProfile v4L2ProfileToVideoCodecProfile(VideoCodec codec,
                                                                    uint32_t profile);
     std::vector<media::VideoCodecProfile> v4L2PixFmtToVideoCodecProfiles(uint32_t pixFmt,
                                                                          bool isEncoder);
