@@ -77,9 +77,9 @@ private:
 
     std::unique_ptr<VideoFramePool> mVideoFramePool;
 
-    scoped_refptr<media::V4L2Device> mDevice;
-    scoped_refptr<media::V4L2Queue> mInputQueue;
-    scoped_refptr<media::V4L2Queue> mOutputQueue;
+    scoped_refptr<V4L2Device> mDevice;
+    scoped_refptr<V4L2Queue> mInputQueue;
+    scoped_refptr<V4L2Queue> mOutputQueue;
 
     std::queue<DecodeRequest> mDecodeRequests;
     std::map<int32_t, DecodeCB> mPendingDecodeCbs;
