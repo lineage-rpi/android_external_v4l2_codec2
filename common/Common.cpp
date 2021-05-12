@@ -4,18 +4,9 @@
 
 #include <v4l2_codec2/common/Common.h>
 
-namespace android {
+#include <base/numerics/safe_math.h>
 
-namespace {
-std::optional<int> checkedMul(int a, int b) {
-    int32_t result = a * b;
-    // Check whether multiplication caused an overflow.
-    if ((a != 0) && ((result / a) != b)) {
-        return std::nullopt;
-    }
-    return result;
-}
-}  // namespace
+namespace android {
 
 bool contains(const Rect& rect1, const Rect& rect2) {
     return (rect2.left >= rect1.left && rect2.right <= rect1.right && rect2.top >= rect1.top &&
@@ -28,7 +19,9 @@ std::string toString(const Rect& rect) {
 }
 
 std::optional<int> getArea(const ui::Size& size) {
-    return checkedMul(size.width, size.height);
+    base::CheckedNumeric<int> checked_area = size.width;
+    checked_area *= size.height;
+    return checked_area.IsValid() ? std::optional<int>(checked_area.ValueOrDie()) : std::nullopt;
 }
 
 bool isEmpty(const ui::Size& size) {
