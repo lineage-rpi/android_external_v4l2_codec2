@@ -7,8 +7,6 @@
 
 #include <stdint.h>
 
-#include <base/files/scoped_file.h>
-
 namespace android {
 
 // The BitstreamBuffer class can be used to store encoded video data.
