@@ -119,7 +119,6 @@ class V4L2Buffer {
   struct v4l2_plane v4l2_planes_[VIDEO_MAX_PLANES];
 
   struct v4l2_format format_ __attribute__((unused));
-  scoped_refptr<VideoFrame> video_frame_;
 
   DISALLOW_COPY_AND_ASSIGN(V4L2Buffer);
 };
