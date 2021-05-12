@@ -33,6 +33,7 @@
 #include <utils/Log.h>
 
 #include <video_pixel_format.h>
+#include <v4l2_codec2/common/Fourcc.h>
 
 // VP8 parsed frames
 #ifndef V4L2_PIX_FMT_VP8_FRAME

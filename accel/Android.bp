@@ -12,7 +12,6 @@ cc_library {
     vendor: true,
 
     srcs: [
-        "fourcc.cc",
         "video_pixel_format.cc",
     ],
 
