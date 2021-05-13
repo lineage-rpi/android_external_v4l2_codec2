@@ -20,7 +20,6 @@
 #include <v4l2_codec2/components/V4L2DecodeInterface.h>
 #include <v4l2_codec2/components/VideoDecoder.h>
 #include <v4l2_codec2/components/VideoFramePool.h>
-#include <v4l2_device.h>
 
 namespace android {
 
@@ -71,7 +70,7 @@ private:
     // Try to process pending works at |mPendingWorks|. Paused when |mIsDraining| is set.
     void pumpPendingWorks();
     // Get the buffer pool.
-    std::unique_ptr<VideoFramePool> getVideoFramePool(const media::Size& size,
+    std::unique_ptr<VideoFramePool> getVideoFramePool(const ui::Size& size,
                                                       HalPixelFormat pixelFormat,
                                                       size_t numBuffers);
     // Detect and report works with no-show frame, only used at VP8 and VP9.

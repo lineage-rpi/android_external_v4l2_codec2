@@ -25,7 +25,7 @@ const std::string V4L2ComponentName::kVP9SecureDecoder = "c2.v4l2.vp9.decoder.se
 // static
 bool V4L2ComponentName::isValid(const char* name) {
     return name == kH264Encoder || name == kVP8Encoder || name == kVP9Encoder ||
-           name == kH264Decoder || name == kVP9Encoder || name == kVP9Decoder ||
+           name == kH264Decoder || name == kVP8Decoder || name == kVP9Decoder ||
            name == kH264SecureDecoder || name == kVP8SecureDecoder || name == kVP9SecureDecoder;
 }
 

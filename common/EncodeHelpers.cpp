@@ -8,52 +8,15 @@
 #include <v4l2_codec2/common/EncodeHelpers.h>
 
 #include <linux/v4l2-controls.h>
-#include <string.h>
 
 #include <C2AllocatorGralloc.h>
 #include <cutils/native_handle.h>
 #include <ui/GraphicBuffer.h>
 #include <utils/Log.h>
 
-namespace android {
+#include <v4l2_codec2/common/NalParser.h>
 
-media::VideoCodecProfile c2ProfileToVideoCodecProfile(C2Config::profile_t profile) {
-    switch (profile) {
-    case C2Config::PROFILE_AVC_BASELINE:
-        return media::VideoCodecProfile::H264PROFILE_BASELINE;
-    case C2Config::PROFILE_AVC_MAIN:
-        return media::VideoCodecProfile::H264PROFILE_MAIN;
-    case C2Config::PROFILE_AVC_EXTENDED:
-        return media::VideoCodecProfile::H264PROFILE_EXTENDED;
-    case C2Config::PROFILE_AVC_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_HIGH;
-    case C2Config::PROFILE_AVC_HIGH_10:
-        return media::VideoCodecProfile::H264PROFILE_HIGH10PROFILE;
-    case C2Config::PROFILE_AVC_HIGH_422:
-        return media::VideoCodecProfile::H264PROFILE_HIGH422PROFILE;
-    case C2Config::PROFILE_AVC_HIGH_444_PREDICTIVE:
-        return media::VideoCodecProfile::H264PROFILE_HIGH444PREDICTIVEPROFILE;
-    case C2Config::PROFILE_AVC_SCALABLE_BASELINE:
-        return media::VideoCodecProfile::H264PROFILE_SCALABLEBASELINE;
-    case C2Config::PROFILE_AVC_SCALABLE_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_SCALABLEHIGH;
-    case C2Config::PROFILE_AVC_STEREO_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_STEREOHIGH;
-    case C2Config::PROFILE_AVC_MULTIVIEW_HIGH:
-        return media::VideoCodecProfile::H264PROFILE_MULTIVIEWHIGH;
-    case C2Config::PROFILE_VP9_0:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE0;
-    case C2Config::PROFILE_VP9_1:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE1;
-    case C2Config::PROFILE_VP9_2:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE2;
-    case C2Config::PROFILE_VP9_3:
-        return media::VideoCodecProfile::VP9PROFILE_PROFILE3;
-    default:
-        ALOGE("Unrecognizable C2 profile (value = 0x%x)...", profile);
-        return media::VideoCodecProfile::VIDEO_CODEC_PROFILE_UNKNOWN;
-    }
-}
+namespace android {
 
 uint8_t c2LevelToV4L2Level(C2Config::level_t level) {
     switch (level) {
@@ -123,9 +86,6 @@ android_ycbcr getGraphicBlockInfo(const C2ConstGraphicBlock& block) {
 
 void extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, const uint8_t* data,
                     size_t length) {
-    constexpr uint8_t kTypeSeqParamSet = 7;
-    constexpr uint8_t kTypePicParamSet = 8;
-
     // Android frameworks needs 4 bytes start code.
     constexpr uint8_t kStartCode[] = {0x00, 0x00, 0x00, 0x01};
     constexpr int kStartCodeLength = 4;
@@ -141,9 +101,9 @@ void extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, co
     NalParser parser(data, length);
     while (parser.locateNextNal()) {
         if (parser.length() == 0) continue;
-        uint8_t nalType = *parser.data() & 0x1f;
+        uint8_t nalType = parser.type();
         ALOGV("find next NAL: type=%d, length=%zu", nalType, parser.length());
-        if (nalType != kTypeSeqParamSet && nalType != kTypePicParamSet) continue;
+        if (nalType != NalParser::kSPSType && nalType != NalParser::kPPSType) continue;
 
         if (tmpOutput + kStartCodeLength + parser.length() > tmpConfigDataEnd) {
             ALOGE("Buffer overflow on extracting codec config data (length=%zu)", length);
@@ -159,34 +119,6 @@ void extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, co
     ALOGV("Extracted codec config data: length=%zu", configDataLength);
     *csd = C2StreamInitDataInfo::output::AllocUnique(configDataLength, 0u);
     std::memcpy((*csd)->m.value, tmpConfigData.get(), configDataLength);
-}
-
-NalParser::NalParser(const uint8_t* data, size_t length)
-      : mCurrNalDataPos(data), mDataEnd(data + length) {
-    mNextNalStartCodePos = findNextStartCodePos();
-}
-
-bool NalParser::locateNextNal() {
-    if (mNextNalStartCodePos == mDataEnd) return false;
-    mCurrNalDataPos = mNextNalStartCodePos + kNalStartCodeLength;  // skip start code.
-    mNextNalStartCodePos = findNextStartCodePos();
-    return true;
-}
-
-const uint8_t* NalParser::data() const {
-    return mCurrNalDataPos;
-}
-
-size_t NalParser::length() const {
-    if (mNextNalStartCodePos == mDataEnd) return mDataEnd - mCurrNalDataPos;
-    size_t length = mNextNalStartCodePos - mCurrNalDataPos;
-    // The start code could be 3 or 4 bytes, i.e., 0x000001 or 0x00000001.
-    return *(mNextNalStartCodePos - 1) == 0x00 ? length - 1 : length;
-}
-
-const uint8_t* NalParser::findNextStartCodePos() const {
-    return std::search(mCurrNalDataPos, mDataEnd, kNalStartCode,
-                       kNalStartCode + kNalStartCodeLength);
 }
 
 }  // namespace android

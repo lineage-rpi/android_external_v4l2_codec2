@@ -11,11 +11,10 @@
 #include <C2.h>
 #include <C2Buffer.h>
 #include <C2Config.h>
+#include <ui/Size.h>
 #include <util/C2InterfaceHelper.h>
 
-#include <size.h>
 #include <v4l2_codec2/common/EncodeHelpers.h>
-#include <video_codecs.h>
 
 namespace media {
 class V4L2Device;
@@ -36,8 +35,8 @@ public:
     const char* getOutputMediaType() const { return mOutputMediaType->m.value; }
     C2Config::profile_t getOutputProfile() const { return mProfileLevel->profile; }
     C2Config::level_t getOutputLevel() const { return mProfileLevel->level; }
-    const media::Size getInputVisibleSize() const {
-        return media::Size(mInputVisibleSize->width, mInputVisibleSize->height);
+    const ui::Size getInputVisibleSize() const {
+        return ui::Size(mInputVisibleSize->width, mInputVisibleSize->height);
     }
     C2BlockPool::local_id_t getBlockPoolId() const { return mOutputBlockPoolIds->m.values[0]; }
     // Get sync key-frame period in frames.

@@ -24,7 +24,8 @@
 #include <log/log.h>
 #include <media/stagefright/foundation/ColorUtils.h>
 
-#include <h264_parser.h>
+#include <v4l2_codec2/common/Common.h>
+#include <v4l2_codec2/common/NalParser.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
 #include <v4l2_codec2/components/V4L2Decoder.h>
@@ -42,44 +43,23 @@ int32_t frameIndexToBitstreamId(c2_cntr64_t frameIndex) {
 bool parseCodedColorAspects(const C2ConstLinearBlock& input,
                             C2StreamColorAspectsInfo::input* codedAspects) {
     C2ReadView view = input.map().get();
-    const uint8_t* data = view.data();
-    const uint32_t size = view.capacity();
+    NalParser parser(view.data(), view.capacity());
 
-    std::unique_ptr<media::H264Parser> h264Parser = std::make_unique<media::H264Parser>();
-    h264Parser->SetStream(data, static_cast<off_t>(size));
-    media::H264NALU nalu;
-    media::H264Parser::Result parRes = h264Parser->AdvanceToNextNALU(&nalu);
-    if (parRes != media::H264Parser::kEOStream && parRes != media::H264Parser::kOk) {
-        ALOGE("H264 AdvanceToNextNALU error: %d", static_cast<int>(parRes));
-        return false;
-    }
-    if (nalu.nal_unit_type != media::H264NALU::kSPS) {
-        ALOGV("NALU is not SPS");
+    if (!parser.locateSPS()) {
+        ALOGV("Couldn't find SPS");
         return false;
     }
 
-    int spsId;
-    parRes = h264Parser->ParseSPS(&spsId);
-    if (parRes != media::H264Parser::kEOStream && parRes != media::H264Parser::kOk) {
-        ALOGE("H264 ParseSPS error: %d", static_cast<int>(parRes));
+    NalParser::ColorAspects aspects;
+    if (!parser.findCodedColorAspects(&aspects)) {
+        ALOGV("Couldn't find color description in SPS");
         return false;
     }
-
-    // Parse ISO color aspects from H264 SPS bitstream.
-    const media::H264SPS* sps = h264Parser->GetSPS(spsId);
-    if (!sps->colour_description_present_flag) {
-        ALOGV("No Color Description in SPS");
-        return false;
-    }
-    int32_t primaries = sps->colour_primaries;
-    int32_t transfer = sps->transfer_characteristics;
-    int32_t coeffs = sps->matrix_coefficients;
-    bool fullRange = sps->video_full_range_flag;
 
     // Convert ISO color aspects to ColorUtils::ColorAspects.
     ColorAspects colorAspects;
-    ColorUtils::convertIsoColorAspectsToCodecAspects(primaries, transfer, coeffs, fullRange,
-                                                     colorAspects);
+    ColorUtils::convertIsoColorAspectsToCodecAspects(
+            aspects.primaries, aspects.transfer, aspects.coeffs, aspects.fullRange, colorAspects);
     ALOGV("Parsed ColorAspects from bitstream: (R:%d, P:%d, M:%d, T:%d)", colorAspects.mRange,
           colorAspects.mPrimaries, colorAspects.mMatrixCoeffs, colorAspects.mTransfer);
 
@@ -251,7 +231,7 @@ void V4L2DecodeComponent::startTask(c2_status_t* status, ::base::WaitableEvent* 
     *status = C2_OK;
 }
 
-std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const media::Size& size,
+std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const ui::Size& size,
                                                                        HalPixelFormat pixelFormat,
                                                                        size_t numBuffers) {
     ALOGV("%s()", __func__);
@@ -265,9 +245,9 @@ std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const med
 
     // (b/157113946): Prevent malicious dynamic resolution change exhausts system memory.
     constexpr int kMaximumSupportedArea = 4096 * 4096;
-    if (size.GetCheckedArea().ValueOrDefault(INT_MAX) > kMaximumSupportedArea) {
-        ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width(),
-              size.height());
+    if (getArea(size).value_or(INT_MAX) > kMaximumSupportedArea) {
+        ALOGE("The output size (%dx%d) is larger than supported size (4096x4096)", size.width,
+              size.height);
         reportError(C2_BAD_VALUE);
         return nullptr;
     }
@@ -661,24 +641,32 @@ bool V4L2DecodeComponent::reportEOSWork() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
-    // In this moment all works prior to EOS work should be done and returned to listener.
-    if (mWorksAtDecoder.size() != 1u) {
-        ALOGE("It shouldn't have remaining works in mWorksAtDecoder except EOS work.");
-        for (const auto& kv : mWorksAtDecoder) {
-            ALOGE("bitstreamId(%d) => Work index=%llu, timestamp=%llu", kv.first,
-                  kv.second->input.ordinal.frameIndex.peekull(),
-                  kv.second->input.ordinal.timestamp.peekull());
-        }
+    const auto it =
+            std::find_if(mWorksAtDecoder.begin(), mWorksAtDecoder.end(), [](const auto& kv) {
+                return kv.second->input.flags & C2FrameData::FLAG_END_OF_STREAM;
+            });
+    if (it == mWorksAtDecoder.end()) {
+        ALOGE("Failed to find EOS work.");
         return false;
     }
 
-    std::unique_ptr<C2Work> eosWork(std::move(mWorksAtDecoder.begin()->second));
-    mWorksAtDecoder.clear();
+    std::unique_ptr<C2Work> eosWork(std::move(it->second));
+    mWorksAtDecoder.erase(it);
 
     eosWork->result = C2_OK;
     eosWork->workletsProcessed = static_cast<uint32_t>(eosWork->worklets.size());
     eosWork->worklets.front()->output.flags = C2FrameData::FLAG_END_OF_STREAM;
     if (!eosWork->input.buffers.empty()) eosWork->input.buffers.front().reset();
+
+    if (!mWorksAtDecoder.empty()) {
+        ALOGW("There are remaining works except EOS work. abandon them.");
+        for (const auto& kv : mWorksAtDecoder) {
+            ALOGW("bitstreamId(%d) => Work index=%llu, timestamp=%llu", kv.first,
+                  kv.second->input.ordinal.frameIndex.peekull(),
+                  kv.second->input.ordinal.timestamp.peekull());
+        }
+        reportAbandonedWorks();
+    }
 
     return reportWork(std::move(eosWork));
 }
