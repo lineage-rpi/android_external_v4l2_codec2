@@ -19,9 +19,9 @@ public:
 
     // Parameters related to a video's color aspects.
     struct ColorAspects {
-        int32_t primaries;
-        int32_t transfer;
-        int32_t coeffs;
+        uint32_t primaries;
+        uint32_t transfer;
+        uint32_t coeffs;
         bool fullRange;
     };
 
