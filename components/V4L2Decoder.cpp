@@ -330,6 +330,7 @@ void V4L2Decoder::flush() {
     }
 
     // Streamoff both V4L2 queues to drop input and output buffers.
+    const bool isOutputStreaming = mOutputQueue->isStreaming();
     mDevice->stopPolling();
     mOutputQueue->streamoff();
     mFrameAtDevice.clear();
@@ -337,7 +338,9 @@ void V4L2Decoder::flush() {
 
     // Streamon both V4L2 queues.
     mInputQueue->streamon();
-    mOutputQueue->streamon();
+    if (isOutputStreaming) {
+        mOutputQueue->streamon();
+    }
 
     // If there is no free buffer at mOutputQueue, tryFetchVideoFrame() should be triggerred after
     // a buffer is DQBUF from output queue. Now all the buffers are dropped at mOutputQueue, we
