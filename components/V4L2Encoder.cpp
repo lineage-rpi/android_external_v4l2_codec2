@@ -582,7 +582,7 @@ bool V4L2Encoder::configureDevice(C2Config::profile_t outputProfile,
                                                 V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_GOP_SIZE, 0)});
 
     // All controls below are H.264-specific, so we can return here if the profile is not H.264.
-    if (outputProfile >= C2Config::PROFILE_AVC_BASELINE ||
+    if (outputProfile >= C2Config::PROFILE_AVC_BASELINE &&
         outputProfile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH) {
         return configureH264(outputProfile, outputH264Level);
     }
