@@ -40,6 +40,9 @@ namespace {
 
 const VideoPixelFormat kInputPixelFormat = VideoPixelFormat::NV12;
 
+// The peak bitrate in function of the target bitrate, used when the bitrate mode is VBR.
+constexpr uint32_t kPeakBitrateMultiplier = 2u;
+
 // Get the video frame layout from the specified |inputBlock|.
 // TODO(dstaessens): Clean up code extracting layout from a C2GraphicBlock.
 std::optional<std::vector<VideoFramePlane>> getVideoFrameLayout(const C2ConstGraphicBlock& block,
@@ -646,9 +649,15 @@ bool V4L2EncodeComponent::initializeEncoder() {
         return false;
     }
 
+    // Get the requested bitrate mode and bitrate. The C2 framework doesn't offer a parameter to
+    // configure the peak bitrate, so we use a multiple of the target bitrate.
+    mBitrateMode = mInterface->getBitrateMode();
+    mBitrate = mInterface->getBitrate();
+
     mEncoder = V4L2Encoder::create(
             outputProfile, h264Level, mInterface->getInputVisibleSize(), *stride,
-            mInterface->getKeyFramePeriod(),
+            mInterface->getKeyFramePeriod(), mBitrateMode, mBitrate,
+            mBitrate * kPeakBitrateMultiplier,
             ::base::BindRepeating(&V4L2EncodeComponent::fetchOutputBlock, mWeakThis),
             ::base::BindRepeating(&V4L2EncodeComponent::onInputBufferDone, mWeakThis),
             ::base::BindRepeating(&V4L2EncodeComponent::onOutputBufferDone, mWeakThis),
@@ -678,19 +687,10 @@ bool V4L2EncodeComponent::updateEncodingParameters() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
 
-    // Query the interface for the encoding parameters requested by the codec 2.0 framework.
-    C2StreamBitrateInfo::output bitrateInfo;
-    C2StreamFrameRateInfo::output framerateInfo;
-    c2_status_t status =
-            mInterface->query({&bitrateInfo, &framerateInfo}, {}, C2_DONT_BLOCK, nullptr);
-    if (status != C2_OK) {
-        ALOGE("Failed to query interface for encoding parameters (error code: %d)", status);
-        reportError(status);
-        return false;
-    }
-
-    // Ask device to change bitrate if it's different from the currently configured bitrate.
-    uint32_t bitrate = bitrateInfo.value;
+    // Ask device to change bitrate if it's different from the currently configured bitrate. The C2
+    // framework doesn't offer a parameter to configure the peak bitrate, so we'll use a multiple of
+    // the target bitrate here. The peak bitrate is only used if the bitrate mode is set to VBR.
+    uint32_t bitrate = mInterface->getBitrate();
     if (mBitrate != bitrate) {
         ALOG_ASSERT(bitrate > 0u);
         ALOGV("Setting bitrate to %u", bitrate);
@@ -699,10 +699,17 @@ bool V4L2EncodeComponent::updateEncodingParameters() {
             return false;
         }
         mBitrate = bitrate;
+
+        if (mBitrateMode == C2Config::BITRATE_VARIABLE) {
+            ALOGV("Setting peak bitrate to %u", bitrate * kPeakBitrateMultiplier);
+            // TODO(b/190336806): Our stack doesn't support dynamic peak bitrate changes yet, ignore
+            // errors for now.
+            mEncoder->setPeakBitrate(bitrate * kPeakBitrateMultiplier);
+        }
     }
 
     // Ask device to change framerate if it's different from the currently configured framerate.
-    uint32_t framerate = static_cast<uint32_t>(std::round(framerateInfo.value));
+    uint32_t framerate = static_cast<uint32_t>(std::round(mInterface->getFramerate()));
     if (mFramerate != framerate) {
         ALOG_ASSERT(framerate > 0u);
         ALOGV("Setting framerate to %u", framerate);
@@ -717,7 +724,7 @@ bool V4L2EncodeComponent::updateEncodingParameters() {
     // Check whether an explicit key frame was requested, if so reset the key frame counter to
     // immediately request a key frame.
     C2StreamRequestSyncFrameTuning::output requestKeyFrame;
-    status = mInterface->query({&requestKeyFrame}, {}, C2_DONT_BLOCK, nullptr);
+    c2_status_t status = mInterface->query({&requestKeyFrame}, {}, C2_DONT_BLOCK, nullptr);
     if (status != C2_OK) {
         ALOGE("Failed to query interface for key frame request (error code: %d)", status);
         reportError(status);

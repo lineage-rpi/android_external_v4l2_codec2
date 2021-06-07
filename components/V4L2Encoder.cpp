@@ -54,6 +54,7 @@ size_t GetMaxOutputBufferSize(const ui::Size& size) {
 std::unique_ptr<VideoEncoder> V4L2Encoder::create(
         C2Config::profile_t outputProfile, std::optional<uint8_t> level,
         const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
+        C2Config::bitrate_mode_t bitrateMode, uint32_t bitrate, std::optional<uint32_t> peakBitrate,
         FetchOutputBufferCB fetchOutputBufferCb, InputBufferDoneCB inputBufferDoneCb,
         OutputBufferDoneCB outputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb,
         scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
@@ -62,7 +63,8 @@ std::unique_ptr<VideoEncoder> V4L2Encoder::create(
     std::unique_ptr<V4L2Encoder> encoder = ::base::WrapUnique<V4L2Encoder>(new V4L2Encoder(
             std::move(taskRunner), std::move(fetchOutputBufferCb), std::move(inputBufferDoneCb),
             std::move(outputBufferDoneCb), std::move(drainDoneCb), std::move(errorCb)));
-    if (!encoder->initialize(outputProfile, level, visibleSize, stride, keyFramePeriod)) {
+    if (!encoder->initialize(outputProfile, level, visibleSize, stride, keyFramePeriod, bitrateMode,
+                             bitrate, peakBitrate)) {
         return nullptr;
     }
     return encoder;
@@ -161,6 +163,19 @@ bool V4L2Encoder::setBitrate(uint32_t bitrate) {
     return true;
 }
 
+bool V4L2Encoder::setPeakBitrate(uint32_t peakBitrate) {
+    ALOGV("%s()", __func__);
+    ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
+
+    if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
+                              {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_BITRATE_PEAK, peakBitrate)})) {
+        // TODO(b/190336806): Our stack doesn't support dynamic peak bitrate changes yet, ignore
+        // errors for now.
+        ALOGW("Setting peak bitrate to %u failed", peakBitrate);
+    }
+    return true;
+}
+
 bool V4L2Encoder::setFramerate(uint32_t framerate) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
@@ -189,8 +204,9 @@ VideoPixelFormat V4L2Encoder::inputFormat() const {
 }
 
 bool V4L2Encoder::initialize(C2Config::profile_t outputProfile, std::optional<uint8_t> level,
-                             const ui::Size& visibleSize, uint32_t stride,
-                             uint32_t keyFramePeriod) {
+                             const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
+                             C2Config::bitrate_mode_t bitrateMode, uint32_t bitrate,
+                             std::optional<uint32_t> peakBitrate) {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
     ALOG_ASSERT(keyFramePeriod > 0);
@@ -237,6 +253,12 @@ bool V4L2Encoder::initialize(C2Config::profile_t outputProfile, std::optional<ui
         ALOGE("Failed to get V4L2 device queues");
         return false;
     }
+
+    // Configure the requested bitrate mode and bitrate on the device.
+    if (!configureBitrateMode(bitrateMode) || !setBitrate(bitrate)) return false;
+
+    // If the bitrate mode is VBR we also need to configure the peak bitrate on the device.
+    if ((bitrateMode == C2Config::BITRATE_VARIABLE) && !setPeakBitrate(*peakBitrate)) return false;
 
     // First try to configure the specified output format, as changing the output format can affect
     // the configured input format.
@@ -634,6 +656,21 @@ bool V4L2Encoder::configureH264(C2Config::profile_t outputProfile,
     // Ignore return value as these controls are optional.
     mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG, std::move(h264Ctrls));
 
+    return true;
+}
+
+bool V4L2Encoder::configureBitrateMode(C2Config::bitrate_mode_t bitrateMode) {
+    ALOGV("%s()", __func__);
+    ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
+
+    v4l2_mpeg_video_bitrate_mode v4l2BitrateMode =
+            V4L2Device::C2BitrateModeToV4L2BitrateMode(bitrateMode);
+    if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
+                              {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_BITRATE_MODE, v4l2BitrateMode)})) {
+        // TODO(b/190336806): Our stack doesn't support bitrate mode changes yet. We default to CBR
+        // which is currently the only supported mode so we can safely ignore this for now.
+        ALOGW("Setting bitrate mode to %u failed", v4l2BitrateMode);
+    }
     return true;
 }
 
