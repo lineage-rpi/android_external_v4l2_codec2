@@ -35,6 +35,28 @@
 namespace android {
 namespace {
 
+// CCBC pauses sending input buffers to the component when all the output slots are filled by
+// pending decoded buffers. If the available output buffers are exhausted before CCBC pauses sending
+// input buffers, CCodec may timeout due to waiting for a available output buffer.
+// This function returns the minimum number of output buffers to prevent the buffers from being
+// exhausted before CCBC pauses sending input buffers.
+size_t getMinNumOutputBuffers(VideoCodec codec) {
+    // The constant values copied from CCodecBufferChannel.cpp.
+    // (b/184020290): Check the value still sync when seeing error message from CCodec:
+    // "previous call to queue exceeded timeout".
+    constexpr size_t kSmoothnessFactor = 4;
+    constexpr size_t kRenderingDepth = 3;
+    // Extra number of needed output buffers for V4L2Decoder.
+    constexpr size_t kExtraNumOutputBuffersForDecoder = 2;
+
+    // The total needed number of output buffers at pipeline are:
+    // - MediaCodec output slots: output delay + kSmoothnessFactor
+    // - Surface: kRenderingDepth
+    // - Component: kExtraNumOutputBuffersForDecoder
+    return V4L2DecodeInterface::getOutputDelay(codec) + kSmoothnessFactor + kRenderingDepth +
+           kExtraNumOutputBuffersForDecoder;
+}
+
 // Mask against 30 bits to avoid (undefined) wraparound on signed integer.
 int32_t frameIndexToBitstreamId(c2_cntr64_t frameIndex) {
     return static_cast<int32_t>(frameIndex.peeku() & 0x3FFFFFFF);
@@ -207,9 +229,11 @@ void V4L2DecodeComponent::startTask(c2_status_t* status, ::base::WaitableEvent* 
         return;
     }
     const size_t inputBufferSize = mIntfImpl->getInputBufferSize();
+    const size_t minNumOutputBuffers = getMinNumOutputBuffers(*codec);
+
     // ::base::Unretained(this) is safe here because |mDecoder| is always destroyed before
     // |mDecoderThread| is stopped, so |*this| is always valid during |mDecoder|'s lifetime.
-    mDecoder = V4L2Decoder::Create(*codec, inputBufferSize,
+    mDecoder = V4L2Decoder::Create(*codec, inputBufferSize, minNumOutputBuffers,
                                    ::base::BindRepeating(&V4L2DecodeComponent::getVideoFramePool,
                                                          ::base::Unretained(this)),
                                    ::base::BindRepeating(&V4L2DecodeComponent::onOutputFrameReady,
