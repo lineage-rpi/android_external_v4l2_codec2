@@ -198,7 +198,7 @@ std::shared_ptr<C2Component> V4L2EncodeComponent::create(
     ALOGV("%s(%s)", __func__, name.c_str());
 
     static const int32_t kMaxConcurrentInstances =
-            property_get_int32("debug.v4l2_codec2.encode.concurrent-instances", -1);
+            property_get_int32("ro.vendor.v4l2_codec2.encode_concurrent_instances", -1);
 
     static std::mutex mutex;
     std::lock_guard<std::mutex> lock(mutex);
