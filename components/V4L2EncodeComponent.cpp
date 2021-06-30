@@ -186,6 +186,12 @@ std::unique_ptr<V4L2Encoder::InputFrame> CreateInputFrame(const C2ConstGraphicBl
                                                      format, index, timestamp);
 }
 
+// Check whether the specified |profile| is an H.264 profile.
+bool IsH264Profile(C2Config::profile_t profile) {
+    return (profile >= C2Config::PROFILE_AVC_BASELINE &&
+            profile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH);
+}
+
 }  // namespace
 
 // static
@@ -617,14 +623,14 @@ bool V4L2EncodeComponent::initializeEncoder() {
     ALOG_ASSERT(!mInputFormatConverter);
     ALOG_ASSERT(!mEncoder);
 
-    mCSDSubmitted = false;
-
     // Get the requested profile and level.
     C2Config::profile_t outputProfile = mInterface->getOutputProfile();
 
+    // CSD only needs to be extracted when using an H.264 profile.
+    mExtractCSD = IsH264Profile(outputProfile);
+
     std::optional<uint8_t> h264Level;
-    if (outputProfile >= C2Config::PROFILE_AVC_BASELINE &&
-        outputProfile <= C2Config::PROFILE_AVC_ENHANCED_MULTIVIEW_DEPTH_HIGH) {
+    if (IsH264Profile(outputProfile)) {
         h264Level = c2LevelToV4L2Level(mInterface->getOutputLevel());
     }
 
@@ -869,7 +875,7 @@ void V4L2EncodeComponent::onOutputBufferDone(size_t dataSize, int64_t timestamp,
     // If no CSD (content-specific-data, e.g. SPS for H.264) has been submitted yet, we expect this
     // output block to contain CSD. We only submit the CSD once, even if it's attached to each key
     // frame.
-    if (!mCSDSubmitted) {
+    if (mExtractCSD) {
         ALOGV("No CSD submitted yet, extracting CSD");
         std::unique_ptr<C2StreamInitDataInfo::output> csd;
         C2ReadView view = constBlock.map().get();
@@ -884,7 +890,7 @@ void V4L2EncodeComponent::onOutputBufferDone(size_t dataSize, int64_t timestamp,
         LOG_ASSERT(!mWorkQueue.empty());
         C2Work* work = mWorkQueue.front().get();
         work->worklets.front()->output.configUpdate.push_back(std::move(csd));
-        mCSDSubmitted = true;
+        mExtractCSD = false;
     }
 
     // Get the work item associated with the timestamp.

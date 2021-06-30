@@ -158,8 +158,8 @@ private:
     // The framerate currently configured on the v4l2 device.
     uint32_t mFramerate = 0;
 
-    // Whether we extracted and submitted CSD (codec-specific data, e.g. H.264 SPS) to the framework.
-    bool mCSDSubmitted = false;
+    // Whether we need to extract and submit CSD (codec-specific data, e.g. H.264 SPS).
+    bool mExtractCSD = false;
 
     // The queue of encode work items currently being processed.
     std::deque<std::unique_ptr<C2Work>> mWorkQueue;
