@@ -623,6 +623,8 @@ bool V4L2EncodeComponent::initializeEncoder() {
     ALOG_ASSERT(!mInputFormatConverter);
     ALOG_ASSERT(!mEncoder);
 
+    mLastFrameTime = std::nullopt;
+
     // Get the requested profile and level.
     C2Config::profile_t outputProfile = mInterface->getOutputProfile();
 
@@ -743,6 +745,18 @@ bool V4L2EncodeComponent::encode(C2ConstGraphicBlock block, uint64_t index, int6
 
     ALOGV("Encoding input block (index: %" PRIu64 ", timestamp: %" PRId64 ", size: %dx%d)", index,
           timestamp, block.width(), block.height());
+
+    // Dynamically adjust framerate based on the frame's timestamp if required.
+    constexpr int64_t kMaxFramerateDiff = 5;
+    if (mLastFrameTime && (timestamp > *mLastFrameTime)) {
+        int64_t newFramerate =
+                static_cast<int64_t>(std::round(1000000.0 / (timestamp - *mLastFrameTime)));
+        if (abs(mFramerate - newFramerate) > kMaxFramerateDiff) {
+            ALOGV("Adjusting framerate to %" PRId64 " based on frame timestamps", newFramerate);
+            mInterface->setFramerate(static_cast<uint32_t>(newFramerate));
+        }
+    }
+    mLastFrameTime = timestamp;
 
     // Update dynamic encoding parameters (bitrate, framerate, key frame) if requested.
     if (!updateEncodingParameters()) return false;
