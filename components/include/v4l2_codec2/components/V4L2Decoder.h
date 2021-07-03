@@ -26,8 +26,8 @@ namespace android {
 class V4L2Decoder : public VideoDecoder {
 public:
     static std::unique_ptr<VideoDecoder> Create(
-            const VideoCodec& codec, const size_t inputBufferSize, GetPoolCB getPoolCB,
-            OutputCB outputCb, ErrorCB errorCb,
+            const VideoCodec& codec, const size_t inputBufferSize, const size_t minNumOutputBuffers,
+            GetPoolCB getPoolCB, OutputCB outputCb, ErrorCB errorCb,
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~V4L2Decoder() override;
 
@@ -55,8 +55,9 @@ private:
     };
 
     V4L2Decoder(scoped_refptr<::base::SequencedTaskRunner> taskRunner);
-    bool start(const VideoCodec& codec, const size_t inputBufferSize, GetPoolCB getPoolCb,
-               OutputCB outputCb, ErrorCB errorCb);
+    bool start(const VideoCodec& codec, const size_t inputBufferSize,
+               const size_t minNumOutputBuffers, GetPoolCB getPoolCb, OutputCB outputCb,
+               ErrorCB errorCb);
     bool setupInputFormat(const uint32_t inputPixelFormat, const size_t inputBufferSize);
     void pumpDecodeRequest();
 
@@ -85,6 +86,7 @@ private:
     std::queue<DecodeRequest> mDecodeRequests;
     std::map<int32_t, DecodeCB> mPendingDecodeCbs;
 
+    size_t mMinNumOutputBuffers = 0;
     GetPoolCB mGetPoolCb;
     OutputCB mOutputCb;
     DecodeCB mDrainCb;
