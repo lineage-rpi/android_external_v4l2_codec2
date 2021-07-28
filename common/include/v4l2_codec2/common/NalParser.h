@@ -12,6 +12,8 @@ namespace android {
 // Helper class to parse H264 NAL units from data.
 class NalParser {
 public:
+    // Type of a IDR Slice NAL unit.
+    static constexpr uint8_t kIDRType = 5;
     // Type of a SPS NAL unit.
     static constexpr uint8_t kSPSType = 7;
     // Type of a PPS NAL unit.
