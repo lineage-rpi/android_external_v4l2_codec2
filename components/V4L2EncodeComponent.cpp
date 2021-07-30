@@ -892,8 +892,7 @@ void V4L2EncodeComponent::onOutputBufferDone(size_t dataSize, int64_t timestamp,
         ALOGV("No CSD submitted yet, extracting CSD");
         std::unique_ptr<C2StreamInitDataInfo::output> csd;
         C2ReadView view = constBlock.map().get();
-        extractCSDInfo(&csd, view.data(), view.capacity());
-        if (!csd) {
+        if (!extractCSDInfo(&csd, view.data(), view.capacity())) {
             ALOGE("Failed to extract CSD");
             reportError(C2_CORRUPTED);
             return;
