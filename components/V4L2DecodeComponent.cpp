@@ -494,9 +494,8 @@ void V4L2DecodeComponent::pumpPendingWorks() {
                 }
             }
 
-            std::unique_ptr<BitstreamBuffer> buffer =
-                    std::make_unique<BitstreamBuffer>(bitstreamId, linearBlock.handle()->data[0],
-                                                      linearBlock.offset(), linearBlock.size());
+            std::unique_ptr<ConstBitstreamBuffer> buffer = std::make_unique<ConstBitstreamBuffer>(
+                    bitstreamId, linearBlock, linearBlock.offset(), linearBlock.size());
             if (!buffer) {
                 reportError(C2_CORRUPTED);
                 return;
