@@ -9,7 +9,7 @@ package {
 
 cc_library {
     name: "libv4l2_codec2_common",
-    vendor: true,
+    vendor_available: true,
 
     defaults: [
         "libcodec2-impl-defaults",
