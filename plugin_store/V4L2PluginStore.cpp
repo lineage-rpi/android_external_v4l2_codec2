@@ -32,7 +32,7 @@ C2Allocator* createAllocator(C2Allocator::id_t allocatorId) {
         return sAllocatorLoader->createAllocator(allocatorId);
     }
 
-    ALOGI("%s(): Fallback to create C2AllocatorGralloc (id=%u)", __func__, allocatorId);
+    ALOGI("%s(): Fallback to create C2AllocatorGralloc(id=%u)", __func__, allocatorId);
     return new C2AllocatorGralloc(allocatorId, true);
 }
 

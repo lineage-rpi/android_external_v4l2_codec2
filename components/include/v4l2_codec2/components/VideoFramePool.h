@@ -15,8 +15,8 @@
 #include <base/memory/weak_ptr.h>
 #include <base/sequenced_task_runner.h>
 #include <base/threading/thread.h>
+#include <ui/Size.h>
 
-#include <size.h>
 #include <v4l2_codec2/common/VideoTypes.h>
 #include <v4l2_codec2/components/VideoFrame.h>
 
@@ -31,8 +31,8 @@ public:
     using GetVideoFrameCB = ::base::OnceCallback<void(std::optional<FrameWithBlockId>)>;
 
     static std::unique_ptr<VideoFramePool> Create(
-            std::shared_ptr<C2BlockPool> blockPool, const size_t numBuffers,
-            const media::Size& size, HalPixelFormat pixelFormat, bool isSecure,
+            std::shared_ptr<C2BlockPool> blockPool, const size_t numBuffers, const ui::Size& size,
+            HalPixelFormat pixelFormat, bool isSecure,
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~VideoFramePool();
 
@@ -48,8 +48,8 @@ private:
     // |pixelFormat| is the pixel format of the required graphic blocks.
     // |isSecure| indicates the video stream is encrypted or not.
     // All public methods and the callbacks should be run on |taskRunner|.
-    VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const media::Size& size,
-                   HalPixelFormat pixelFormat, bool isSecure,
+    VideoFramePool(std::shared_ptr<C2BlockPool> blockPool, const ui::Size& size,
+                   HalPixelFormat pixelFormat, C2MemoryUsage memoryUsage,
                    scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     bool initialize();
     void destroyTask();
@@ -59,21 +59,21 @@ private:
     void getVideoFrameTask();
     void onVideoFrameReady(std::optional<FrameWithBlockId> frameWithBlockId);
 
-    // Extracts buffer ID from graphic block.
-    // |block| is the graphic block allocated by |blockPool|.
-    static std::optional<uint32_t> getBufferIdFromGraphicBlock(const C2BlockPool& blockPool,
-                                                               const C2Block2D& block);
-
     // Ask |blockPool| to allocate the specified number of buffers.
     // |bufferCount| is the number of requested buffers.
-    static c2_status_t requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount);
+    static c2_status_t requestNewBufferSet(C2BlockPool& blockPool, int32_t bufferCount,
+                                           const ui::Size& size, uint32_t format,
+                                           C2MemoryUsage usage);
+
+    static std::optional<uint32_t> getBufferIdFromGraphicBlock(C2BlockPool& blockPool,
+                                                               const C2Block2D& block);
 
     // Ask |blockPool| to notify when a block is available via |cb|.
     // Return true if |blockPool| supports notifying buffer available.
     static bool setNotifyBlockAvailableCb(C2BlockPool& blockPool, ::base::OnceClosure cb);
 
     std::shared_ptr<C2BlockPool> mBlockPool;
-    const media::Size mSize;
+    const ui::Size mSize;
     const HalPixelFormat mPixelFormat;
     const C2MemoryUsage mMemoryUsage;
 

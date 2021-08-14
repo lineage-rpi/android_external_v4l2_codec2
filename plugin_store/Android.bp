@@ -18,6 +18,8 @@ cc_library_shared {
     srcs: [
         "C2VdaBqBlockPool.cpp",
         "C2VdaPooledBlockPool.cpp",
+        "DrmGrallocHelpers.cpp",
+        "H2BGraphicBufferProducer.cpp",
         "V4L2PluginStore.cpp",
         "VendorAllocatorLoader.cpp",
     ],
@@ -26,12 +28,13 @@ cc_library_shared {
     ],
 
     header_libs: [
-        "libcodec2_internal",
+        "libcodec2_internal", // needed for including C2BqBufferPriv.h.
     ],
     shared_libs: [
         "android.hardware.graphics.bufferqueue@2.0",
         "libchrome",
         "libcutils",
+        "libdrm",
         "libhardware",
         "libhidlbase",
         "libnativewindow",
