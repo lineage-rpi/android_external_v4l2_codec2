@@ -202,7 +202,6 @@ c2_status_t V4L2DecodeComponent::start() {
     }
     mDecoderTaskRunner = mDecoderThread.task_runner();
     mWeakThis = mWeakThisFactory.GetWeakPtr();
-    mStdWeakThis = weak_from_this();
 
     c2_status_t status = C2_CORRUPTED;
     ::base::WaitableEvent done;
@@ -261,7 +260,7 @@ std::unique_ptr<VideoFramePool> V4L2DecodeComponent::getVideoFramePool(const ui:
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
-    auto sharedThis = mStdWeakThis.lock();
+    auto sharedThis = weak_from_this().lock();
     if (sharedThis == nullptr) {
         ALOGE("%s(): V4L2DecodeComponent instance is destroyed.", __func__);
         return nullptr;
@@ -348,7 +347,6 @@ void V4L2DecodeComponent::releaseTask() {
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
     mWeakThisFactory.InvalidateWeakPtrs();
-    mStdWeakThis.reset();
     mDecoder = nullptr;
 }
 
@@ -698,12 +696,6 @@ bool V4L2DecodeComponent::reportWork(std::unique_ptr<C2Work> work) {
     ALOGV("%s(work=%llu)", __func__, work->input.ordinal.frameIndex.peekull());
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
-    auto sharedThis = mStdWeakThis.lock();
-    if (sharedThis == nullptr) {
-        ALOGE("%s(): V4L2DecodeComponent instance is destroyed.", __func__);
-        return false;
-    }
-
     if (!mListener) {
         ALOGE("mListener is nullptr, setListener_vb() not called?");
         return false;
@@ -711,7 +703,7 @@ bool V4L2DecodeComponent::reportWork(std::unique_ptr<C2Work> work) {
 
     std::list<std::unique_ptr<C2Work>> finishedWorks;
     finishedWorks.emplace_back(std::move(work));
-    mListener->onWorkDone_nb(std::move(sharedThis), std::move(finishedWorks));
+    mListener->onWorkDone_nb(weak_from_this(), std::move(finishedWorks));
     return true;
 }
 
@@ -748,12 +740,6 @@ void V4L2DecodeComponent::reportAbandonedWorks() {
     ALOGV("%s()", __func__);
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
-    auto sharedThis = mStdWeakThis.lock();
-    if (sharedThis == nullptr) {
-        ALOGE("%s(): V4L2DecodeComponent instance is destroyed.", __func__);
-        return;
-    }
-
     std::list<std::unique_ptr<C2Work>> abandonedWorks;
     while (!mPendingWorks.empty()) {
         abandonedWorks.emplace_back(std::move(mPendingWorks.front()));
@@ -777,7 +763,7 @@ void V4L2DecodeComponent::reportAbandonedWorks() {
             ALOGE("mListener is nullptr, setListener_vb() not called?");
             return;
         }
-        mListener->onWorkDone_nb(std::move(sharedThis), std::move(abandonedWorks));
+        mListener->onWorkDone_nb(weak_from_this(), std::move(abandonedWorks));
     }
 }
 
@@ -851,12 +837,6 @@ void V4L2DecodeComponent::reportError(c2_status_t error) {
     ALOGE("%s(error=%u)", __func__, static_cast<uint32_t>(error));
     ALOG_ASSERT(mDecoderTaskRunner->RunsTasksInCurrentSequence());
 
-    auto sharedThis = mStdWeakThis.lock();
-    if (sharedThis == nullptr) {
-        ALOGE("%s(): V4L2DecodeComponent instance is destroyed.", __func__);
-        return;
-    }
-
     if (mComponentState.load() == ComponentState::ERROR) return;
     mComponentState.store(ComponentState::ERROR);
 
@@ -864,7 +844,7 @@ void V4L2DecodeComponent::reportError(c2_status_t error) {
         ALOGE("mListener is nullptr, setListener_vb() not called?");
         return;
     }
-    mListener->onError_nb(std::move(sharedThis), static_cast<uint32_t>(error));
+    mListener->onError_nb(weak_from_this(), static_cast<uint32_t>(error));
 }
 
 c2_status_t V4L2DecodeComponent::announce_nb(const std::vector<C2WorkOutline>& /* items */) {
