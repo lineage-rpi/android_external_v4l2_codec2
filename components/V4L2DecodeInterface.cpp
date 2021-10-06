@@ -14,8 +14,8 @@
 #include <media/stagefright/foundation/MediaDefs.h>
 
 #include <v4l2_codec2/common/V4L2ComponentCommon.h>
+#include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
-#include <v4l2_device.h>
 
 namespace android {
 namespace {
@@ -49,22 +49,6 @@ size_t calculateInputBufferSize(size_t area) {
     if (area > k1080pArea) return kInputBufferSizeFor4K;
     return kInputBufferSizeFor1080p;
 }
-
-uint32_t getOutputDelay(VideoCodec codec) {
-    switch (codec) {
-    case VideoCodec::H264:
-        // Due to frame reordering an H264 decoder might need multiple additional input frames to be
-        // queued before being able to output the associated decoded buffers. We need to tell the
-        // codec2 framework that it should not stop queuing new work items until the maximum number
-        // of frame reordering is reached, to avoid stalling the decoder.
-        return 16;
-    case VideoCodec::VP8:
-        return 0;
-    case VideoCodec::VP9:
-        return 0;
-    }
-}
-
 }  // namespace
 
 // static
@@ -137,6 +121,10 @@ V4L2DecodeInterface::V4L2DecodeInterface(const std::string& name,
         mInitStatus = C2_BAD_VALUE;
         return;
     }
+
+    addParameter(DefineParam(mKind, C2_PARAMKEY_COMPONENT_KIND)
+                         .withConstValue(new C2ComponentKindSetting(C2Component::KIND_DECODER))
+                         .build());
 
     std::string inputMime;
     switch (*mVideoCodec) {
@@ -246,7 +234,7 @@ V4L2DecodeInterface::V4L2DecodeInterface(const std::string& name,
 
     bool secureMode = name.find(".secure") != std::string::npos;
     const C2Allocator::id_t inputAllocators[] = {secureMode ? V4L2AllocatorId::SECURE_LINEAR
-                                                            : C2PlatformAllocatorStore::BLOB};
+                                                            : C2AllocatorStore::DEFAULT_LINEAR};
 
     const C2Allocator::id_t outputAllocators[] = {V4L2AllocatorId::V4L2_BUFFERPOOL};
     const C2Allocator::id_t surfaceAllocator =
@@ -334,7 +322,7 @@ V4L2DecodeInterface::V4L2DecodeInterface(const std::string& name,
 }
 
 size_t V4L2DecodeInterface::getInputBufferSize() const {
-    return calculateInputBufferSize(getMaxSize().GetArea());
+    return calculateInputBufferSize(mSize->width * mSize->height);
 }
 
 c2_status_t V4L2DecodeInterface::queryColorAspects(
@@ -348,6 +336,21 @@ c2_status_t V4L2DecodeInterface::queryColorAspects(
         *targetColorAspects = std::move(colorAspects);
     }
     return status;
+}
+
+uint32_t V4L2DecodeInterface::getOutputDelay(VideoCodec codec) {
+    switch (codec) {
+    case VideoCodec::H264:
+        // Due to frame reordering an H264 decoder might need multiple additional input frames to be
+        // queued before being able to output the associated decoded buffers. We need to tell the
+        // codec2 framework that it should not stop queuing new work items until the maximum number
+        // of frame reordering is reached, to avoid stalling the decoder.
+        return 16;
+    case VideoCodec::VP8:
+        return 0;
+    case VideoCodec::VP9:
+        return 0;
+    }
 }
 
 }  // namespace android

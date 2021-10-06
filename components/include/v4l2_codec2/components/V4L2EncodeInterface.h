@@ -11,11 +11,10 @@
 #include <C2.h>
 #include <C2Buffer.h>
 #include <C2Config.h>
+#include <ui/Size.h>
 #include <util/C2InterfaceHelper.h>
 
-#include <size.h>
 #include <v4l2_codec2/common/EncodeHelpers.h>
-#include <video_codecs.h>
 
 namespace media {
 class V4L2Device;
@@ -33,10 +32,11 @@ public:
     // Note: these getters are not thread-safe. For dynamic parameters, component should use
     // formal query API for C2ComponentInterface instead.
     c2_status_t status() const { return mInitStatus; }
+    const char* getOutputMediaType() const { return mOutputMediaType->m.value; }
     C2Config::profile_t getOutputProfile() const { return mProfileLevel->profile; }
     C2Config::level_t getOutputLevel() const { return mProfileLevel->level; }
-    const media::Size getInputVisibleSize() const {
-        return media::Size(mInputVisibleSize->width, mInputVisibleSize->height);
+    const ui::Size getInputVisibleSize() const {
+        return ui::Size(mInputVisibleSize->width, mInputVisibleSize->height);
     }
     C2BlockPool::local_id_t getBlockPoolId() const { return mOutputBlockPoolIds->m.values[0]; }
     // Get sync key-frame period in frames.
@@ -46,10 +46,14 @@ protected:
     void Initialize(const C2String& name);
 
     // Configurable parameter setters.
-    static C2R ProfileLevelSetter(bool mayBlock, C2P<C2StreamProfileLevelInfo::output>& info,
-                                  const C2P<C2StreamPictureSizeInfo::input>& videosize,
-                                  const C2P<C2StreamFrameRateInfo::output>& frameRate,
-                                  const C2P<C2StreamBitrateInfo::output>& bitrate);
+    static C2R H264ProfileLevelSetter(bool mayBlock, C2P<C2StreamProfileLevelInfo::output>& info,
+                                      const C2P<C2StreamPictureSizeInfo::input>& videosize,
+                                      const C2P<C2StreamFrameRateInfo::output>& frameRate,
+                                      const C2P<C2StreamBitrateInfo::output>& bitrate);
+    static C2R VP9ProfileLevelSetter(bool mayBlock, C2P<C2StreamProfileLevelInfo::output>& info,
+                                     const C2P<C2StreamPictureSizeInfo::input>& videosize,
+                                     const C2P<C2StreamFrameRateInfo::output>& frameRate,
+                                     const C2P<C2StreamBitrateInfo::output>& bitrate);
 
     static C2R SizeSetter(bool mayBlock, C2P<C2StreamPictureSizeInfo::input>& videoSize);
 
@@ -58,6 +62,8 @@ protected:
 
     // Constant parameters
 
+    // The kind of the component; should be C2Component::KIND_ENCODER.
+    std::shared_ptr<C2ComponentKindSetting> mKind;
     // The input format kind; should be C2FormatVideo.
     std::shared_ptr<C2StreamBufferTypeSetting::input> mInputFormat;
     // The memory usage flag of input buffer; should be BufferUsage::VIDEO_ENCODER.
