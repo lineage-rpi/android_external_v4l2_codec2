@@ -27,6 +27,9 @@ public:
     c2_status_t status() const { return mInitStatus; }
     C2BlockPool::local_id_t getBlockPoolId() const { return mOutputBlockPoolIds->m.values[0]; }
     std::optional<VideoCodec> getVideoCodec() const { return mVideoCodec; }
+    ui::Size getCodedSize() const {
+        return mSize ? ui::Size(mSize->width, mSize->height) : ui::Size();
+    }
 
     static uint32_t getOutputDelay(VideoCodec codec);
 

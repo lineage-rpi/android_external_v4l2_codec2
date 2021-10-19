@@ -49,13 +49,13 @@ uint32_t VideoCodecToV4L2PixFmt(VideoCodec codec) {
 
 // static
 std::unique_ptr<VideoDecoder> V4L2Decoder::Create(
-        const VideoCodec& codec, const size_t inputBufferSize, const size_t minNumOutputBuffers,
-        GetPoolCB getPoolCb, OutputCB outputCb, ErrorCB errorCb,
+        const VideoCodec& codec, const ui::Size& codedSize, const size_t inputBufferSize,
+        const size_t minNumOutputBuffers, GetPoolCB getPoolCb, OutputCB outputCb, ErrorCB errorCb,
         scoped_refptr<::base::SequencedTaskRunner> taskRunner) {
     std::unique_ptr<V4L2Decoder> decoder =
             ::base::WrapUnique<V4L2Decoder>(new V4L2Decoder(taskRunner));
-    if (!decoder->start(codec, inputBufferSize, minNumOutputBuffers, std::move(getPoolCb),
-                        std::move(outputCb), std::move(errorCb))) {
+    if (!decoder->start(codec, codedSize, inputBufferSize, minNumOutputBuffers,
+                        std::move(getPoolCb), std::move(outputCb), std::move(errorCb))) {
         return nullptr;
     }
     return decoder;
@@ -91,9 +91,9 @@ V4L2Decoder::~V4L2Decoder() {
     }
 }
 
-bool V4L2Decoder::start(const VideoCodec& codec, const size_t inputBufferSize,
-                        const size_t minNumOutputBuffers, GetPoolCB getPoolCb, OutputCB outputCb,
-                        ErrorCB errorCb) {
+bool V4L2Decoder::start(const VideoCodec& codec, const ui::Size& codedSize,
+                        const size_t inputBufferSize, const size_t minNumOutputBuffers,
+                        GetPoolCB getPoolCb, OutputCB outputCb, ErrorCB errorCb) {
     ALOGV("%s(codec=%s, inputBufferSize=%zu, minNumOutputBuffers=%zu)", __func__,
           VideoCodecToString(codec), inputBufferSize, minNumOutputBuffers);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
@@ -145,7 +145,7 @@ bool V4L2Decoder::start(const VideoCodec& codec, const size_t inputBufferSize,
         ALOGE("Failed to create V4L2 queue.");
         return false;
     }
-    if (!setupInputFormat(inputPixelFormat, inputBufferSize)) {
+    if (!setupInputFormat(inputPixelFormat, inputBufferSize, codedSize)) {
         ALOGE("Failed to setup input format.");
         return false;
     }
@@ -160,7 +160,8 @@ bool V4L2Decoder::start(const VideoCodec& codec, const size_t inputBufferSize,
     return true;
 }
 
-bool V4L2Decoder::setupInputFormat(const uint32_t inputPixelFormat, const size_t inputBufferSize) {
+bool V4L2Decoder::setupInputFormat(const uint32_t inputPixelFormat, const size_t inputBufferSize,
+                                   const ui::Size& codedSize) {
     ALOGV("%s(inputPixelFormat=%u, inputBufferSize=%zu)", __func__, inputPixelFormat,
           inputBufferSize);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
@@ -174,7 +175,7 @@ bool V4L2Decoder::setupInputFormat(const uint32_t inputPixelFormat, const size_t
     }
 
     // Setup the input format.
-    auto format = mInputQueue->setFormat(inputPixelFormat, ui::Size(), inputBufferSize, 0);
+    auto format = mInputQueue->setFormat(inputPixelFormat, codedSize, inputBufferSize, 0);
     if (!format) {
         ALOGE("Failed to call IOCTL to set input format.");
         return false;

@@ -227,12 +227,13 @@ void V4L2DecodeComponent::startTask(c2_status_t* status, ::base::WaitableEvent* 
         ALOGE("Failed to get video codec.");
         return;
     }
+    const ui::Size codedSize = mIntfImpl->getCodedSize();
     const size_t inputBufferSize = mIntfImpl->getInputBufferSize();
     const size_t minNumOutputBuffers = getMinNumOutputBuffers(*codec);
 
     // ::base::Unretained(this) is safe here because |mDecoder| is always destroyed before
     // |mDecoderThread| is stopped, so |*this| is always valid during |mDecoder|'s lifetime.
-    mDecoder = V4L2Decoder::Create(*codec, inputBufferSize, minNumOutputBuffers,
+    mDecoder = V4L2Decoder::Create(*codec, codedSize, inputBufferSize, minNumOutputBuffers,
                                    ::base::BindRepeating(&V4L2DecodeComponent::getVideoFramePool,
                                                          ::base::Unretained(this)),
                                    ::base::BindRepeating(&V4L2DecodeComponent::onOutputFrameReady,
