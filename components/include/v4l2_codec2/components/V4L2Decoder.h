@@ -26,9 +26,9 @@ namespace android {
 class V4L2Decoder : public VideoDecoder {
 public:
     static std::unique_ptr<VideoDecoder> Create(
-            const VideoCodec& codec, const size_t inputBufferSize, const size_t minNumOutputBuffers,
-            GetPoolCB getPoolCB, OutputCB outputCb, ErrorCB errorCb,
-            scoped_refptr<::base::SequencedTaskRunner> taskRunner);
+            const VideoCodec& codec, const ui::Size& codedSize, const size_t inputBufferSize,
+            const size_t minNumOutputBuffers, GetPoolCB getPoolCB, OutputCB outputCb,
+            ErrorCB errorCb, scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~V4L2Decoder() override;
 
     void decode(std::unique_ptr<ConstBitstreamBuffer> buffer, DecodeCB decodeCb) override;
@@ -55,10 +55,11 @@ private:
     };
 
     V4L2Decoder(scoped_refptr<::base::SequencedTaskRunner> taskRunner);
-    bool start(const VideoCodec& codec, const size_t inputBufferSize,
+    bool start(const VideoCodec& codec, const ui::Size& codedSize, const size_t inputBufferSize,
                const size_t minNumOutputBuffers, GetPoolCB getPoolCb, OutputCB outputCb,
                ErrorCB errorCb);
-    bool setupInputFormat(const uint32_t inputPixelFormat, const size_t inputBufferSize);
+    bool setupInputFormat(const uint32_t inputPixelFormat, const size_t inputBufferSize,
+                          const ui::Size& codedSize);
     void pumpDecodeRequest();
 
     void serviceDeviceTask(bool event);
