@@ -151,4 +151,60 @@ bool extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, co
            copyNALUPrependingStartCode(pps.data(), pps.size(), &csdBuffer, &configDataLength);
 }
 
+size_t prependSPSPPSToIDR(const uint8_t* src, size_t srcSize, uint8_t* dst, size_t dstSize,
+                          std::vector<uint8_t>* sps, std::vector<uint8_t>* pps) {
+    bool foundStreamParams = false;
+    size_t remainingDstSize = dstSize;
+    NalParser parser(src, srcSize);
+    while (parser.locateNextNal()) {
+        switch (parser.type()) {
+        case NalParser::kSPSType:
+            // SPS found, copy to cache.
+            ALOGV("Found SPS (length %zu)", parser.length());
+            sps->resize(parser.length());
+            memcpy(sps->data(), parser.data(), parser.length());
+            foundStreamParams = true;
+            break;
+        case NalParser::kPPSType:
+            // PPS found, copy to cache.
+            ALOGV("Found PPS (length %zu)", parser.length());
+            pps->resize(parser.length());
+            memcpy(pps->data(), parser.data(), parser.length());
+            foundStreamParams = true;
+            break;
+        case NalParser::kIDRType:
+            ALOGV("Found IDR (length %zu)", parser.length());
+            if (foundStreamParams) {
+                ALOGV("Not injecting SPS and PPS before IDR, already present");
+                break;
+            }
+
+            // Prepend the cached SPS and PPS to the IDR NAL unit.
+            if (sps->empty() || pps->empty()) {
+                ALOGE("No cached SPS or PPS NAL unit available to inject before IDR");
+                return 0;
+            }
+            if (!copyNALUPrependingStartCode(sps->data(), sps->size(), &dst, &remainingDstSize)) {
+                ALOGE("Not enough space to inject SPS NAL unit before IDR");
+                return 0;
+            }
+            if (!copyNALUPrependingStartCode(pps->data(), pps->size(), &dst, &remainingDstSize)) {
+                ALOGE("Not enough space to inject PPS NAL unit before IDR");
+                return 0;
+            }
+
+            ALOGV("Stream header injected before IDR");
+            break;
+        }
+
+        // Copy the NAL unit to the new output buffer.
+        if (!copyNALUPrependingStartCode(parser.data(), parser.length(), &dst, &remainingDstSize)) {
+            ALOGE("NAL unit does not fit in the provided output buffer");
+            return 0;
+        }
+    }
+
+    return dstSize - remainingDstSize;
+}
+
 }  // namespace android

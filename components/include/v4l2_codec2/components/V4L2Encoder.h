@@ -164,6 +164,12 @@ private:
     // Key frame counter, a key frame will be requested each time it reaches zero.
     uint32_t mKeyFrameCounter = 0;
 
+    // Whether we need to manually cache and prepend SPS and PPS to IDR frames.
+    bool mInjectParamsBeforeIDR = false;
+    // The latest cached SPS and PPS (without H.264 start code).
+    std::vector<uint8_t> mCachedSPS;
+    std::vector<uint8_t> mCachedPPS;
+
     // The V4L2 device and associated queues used to interact with the device.
     scoped_refptr<V4L2Device> mDevice;
     scoped_refptr<V4L2Queue> mInputQueue;

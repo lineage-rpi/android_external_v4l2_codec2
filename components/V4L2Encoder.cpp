@@ -17,6 +17,7 @@
 #include <log/log.h>
 #include <ui/Rect.h>
 
+#include <v4l2_codec2/common/EncodeHelpers.h>
 #include <v4l2_codec2/common/Fourcc.h>
 #include <v4l2_codec2/common/V4L2Device.h>
 #include <v4l2_codec2/components/BitstreamBuffer.h>
@@ -616,17 +617,18 @@ bool V4L2Encoder::configureH264(C2Config::profile_t outputProfile,
                                 std::optional<const uint8_t> outputH264Level) {
     // When encoding H.264 we want to prepend SPS and PPS to each IDR for resilience. Some
     // devices support this through the V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR control.
-    // TODO(b/161495502): V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR is currently not supported
-    // yet, just log a warning if the operation was unsuccessful for now.
+    // Otherwise we have to cache the latest SPS and PPS and inject these manually.
     if (mDevice->isCtrlExposed(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR)) {
         if (!mDevice->setExtCtrls(V4L2_CTRL_CLASS_MPEG,
                                   {V4L2ExtCtrl(V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR, 1)})) {
             ALOGE("Failed to configure device to prepend SPS and PPS to each IDR");
             return false;
         }
+        mInjectParamsBeforeIDR = false;
         ALOGV("Device supports prepending SPS and PPS to each IDR");
     } else {
-        ALOGW("Device doesn't support prepending SPS and PPS to IDR");
+        mInjectParamsBeforeIDR = true;
+        ALOGV("Device doesn't support prepending SPS and PPS to IDR, injecting manually.");
     }
 
     std::vector<V4L2ExtCtrl> h264Ctrls;
@@ -912,11 +914,51 @@ bool V4L2Encoder::dequeueOutputBuffer() {
         return false;
     }
 
-    std::unique_ptr<BitstreamBuffer> bitstream_buffer =
+    std::unique_ptr<BitstreamBuffer> bitstreamBuffer =
             std::move(mOutputBuffers[buffer->bufferId()]);
     if (encodedDataSize > 0) {
-        mOutputBufferDoneCb.Run(encodedDataSize, timestamp.InMicroseconds(), buffer->isKeyframe(),
-                                std::move(bitstream_buffer));
+        if (!mInjectParamsBeforeIDR) {
+            // No need to inject SPS or PPS before IDR frames, we can just return the buffer as-is.
+            mOutputBufferDoneCb.Run(encodedDataSize, timestamp.InMicroseconds(),
+                                    buffer->isKeyframe(), std::move(bitstreamBuffer));
+        } else if (!buffer->isKeyframe()) {
+            // We need to inject SPS and PPS before IDR frames, but this frame is not a key frame.
+            // We can return the buffer as-is, but need to update our SPS and PPS cache if required.
+            C2ConstLinearBlock constBlock = bitstreamBuffer->dmabuf->share(
+                    bitstreamBuffer->dmabuf->offset(), encodedDataSize, C2Fence());
+            C2ReadView readView = constBlock.map().get();
+            extractSPSPPS(readView.data(), encodedDataSize, &mCachedSPS, &mCachedPPS);
+            mOutputBufferDoneCb.Run(encodedDataSize, timestamp.InMicroseconds(),
+                                    buffer->isKeyframe(), std::move(bitstreamBuffer));
+        } else {
+            // We need to inject our cached SPS and PPS NAL units to the IDR frame. It's possible
+            // this frame already has SPS and PPS NAL units attached, in which case we only need to
+            // update our cached SPS and PPS.
+            C2ConstLinearBlock constBlock = bitstreamBuffer->dmabuf->share(
+                    bitstreamBuffer->dmabuf->offset(), encodedDataSize, C2Fence());
+            C2ReadView readView = constBlock.map().get();
+
+            // Allocate a new buffer to copy the data with prepended SPS and PPS into.
+            std::unique_ptr<BitstreamBuffer> prependedBitstreamBuffer;
+            mFetchOutputBufferCb.Run(mOutputBufferSize, &prependedBitstreamBuffer);
+            if (!prependedBitstreamBuffer) {
+                ALOGE("Failed to fetch output block");
+                onError();
+                return false;
+            }
+            C2WriteView writeView = prependedBitstreamBuffer->dmabuf->map().get();
+
+            // If there is not enough space in the output buffer just return the original buffer.
+            size_t newSize = prependSPSPPSToIDR(readView.data(), encodedDataSize, writeView.data(),
+                                                writeView.size(), &mCachedSPS, &mCachedPPS);
+            if (newSize > 0) {
+                mOutputBufferDoneCb.Run(newSize, timestamp.InMicroseconds(), buffer->isKeyframe(),
+                                        std::move(prependedBitstreamBuffer));
+            } else {
+                mOutputBufferDoneCb.Run(encodedDataSize, timestamp.InMicroseconds(),
+                                        buffer->isKeyframe(), std::move(bitstreamBuffer));
+            }
+        }
     }
 
     // If the buffer is marked as last and we were flushing the encoder, flushing is now done.

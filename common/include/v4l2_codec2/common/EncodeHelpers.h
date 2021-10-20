@@ -54,6 +54,12 @@ bool extractSPSPPS(const uint8_t* data, size_t length, std::vector<uint8_t>* sps
 bool extractCSDInfo(std::unique_ptr<C2StreamInitDataInfo::output>* const csd, const uint8_t* data,
                     size_t length);
 
+// Prepend the specified |sps| and |pps| NAL units (without start codes) to the H.264 |data| stream.
+// The result is copied into |dst|. The provided |sps| and |pps| data will be updated if an SPS or
+// PPS NAL unit is encountered. Returns the size of the new data, will be 0 if an error occurred.
+size_t prependSPSPPSToIDR(const uint8_t* src, size_t srcSize, uint8_t* dst, size_t dstSize,
+                          std::vector<uint8_t>* sps, std::vector<uint8_t>* pps);
+
 }  // namespace android
 
 #endif  // ANDROID_V4L2_CODEC2_COMMON_HELPERS_H
