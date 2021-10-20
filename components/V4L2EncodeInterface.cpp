@@ -338,8 +338,8 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
                                                  C2Config::LEVEL_AVC_2_1, C2Config::LEVEL_AVC_2_2,
                                                  C2Config::LEVEL_AVC_3, C2Config::LEVEL_AVC_3_1,
                                                  C2Config::LEVEL_AVC_3_2, C2Config::LEVEL_AVC_4,
-                                                 C2Config::LEVEL_AVC_4_1, C2Config::LEVEL_AVC_5,
-                                                 C2Config::LEVEL_AVC_5_1})})
+                                                 C2Config::LEVEL_AVC_4_1, C2Config::LEVEL_AVC_4_2,
+                                                 C2Config::LEVEL_AVC_5, C2Config::LEVEL_AVC_5_1})})
                         .withSetter(H264ProfileLevelSetter, mInputVisibleSize, mFrameRate, mBitrate)
                         .build());
     } else if (getCodecFromComponentName(name) == VideoCodec::VP8) {
