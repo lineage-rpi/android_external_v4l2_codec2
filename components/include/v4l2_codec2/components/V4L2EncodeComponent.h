@@ -157,6 +157,8 @@ private:
     uint32_t mBitrate = 0;
     // The framerate currently configured on the v4l2 device.
     uint32_t mFramerate = 0;
+    // The timestamp of the last frame encoded, used to dynamically adjust the framerate.
+    std::optional<int64_t> mLastFrameTime;
 
     // Whether we need to extract and submit CSD (codec-specific data, e.g. H.264 SPS).
     bool mExtractCSD = false;
