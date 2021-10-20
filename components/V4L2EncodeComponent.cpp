@@ -812,7 +812,7 @@ void V4L2EncodeComponent::flush() {
         mWorkQueue.pop_front();
     }
     if (!abortedWorkItems.empty()) {
-        mListener->onWorkDone_nb(shared_from_this(), std::move(abortedWorkItems));
+        mListener->onWorkDone_nb(weak_from_this(), std::move(abortedWorkItems));
     }
 }
 
@@ -1011,15 +1011,23 @@ void V4L2EncodeComponent::reportWork(std::unique_ptr<C2Work> work) {
 
     std::list<std::unique_ptr<C2Work>> finishedWorkList;
     finishedWorkList.emplace_back(std::move(work));
-    mListener->onWorkDone_nb(shared_from_this(), std::move(finishedWorkList));
+    mListener->onWorkDone_nb(weak_from_this(), std::move(finishedWorkList));
 }
 
 bool V4L2EncodeComponent::getBlockPool() {
+    ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
+
+    auto sharedThis = weak_from_this().lock();
+    if (!sharedThis) {
+        ALOGI("%s(): V4L2EncodeComponent instance is already destroyed", __func__);
+        return false;
+    }
+
     C2BlockPool::local_id_t poolId = mInterface->getBlockPoolId();
     if (poolId == C2BlockPool::BASIC_LINEAR) {
         ALOGW("Using unoptimized linear block pool");
     }
-    c2_status_t status = GetCodec2BlockPool(poolId, shared_from_this(), &mOutputBlockPool);
+    c2_status_t status = GetCodec2BlockPool(poolId, std::move(sharedThis), &mOutputBlockPool);
     if (status != C2_OK || !mOutputBlockPool) {
         ALOGE("Failed to get output block pool, error: %d", status);
         return false;
@@ -1035,7 +1043,7 @@ void V4L2EncodeComponent::reportError(c2_status_t error) {
     std::lock_guard<std::mutex> lock(mComponentLock);
     if (mComponentState != ComponentState::ERROR) {
         setComponentState(ComponentState::ERROR);
-        mListener->onError_nb(shared_from_this(), static_cast<uint32_t>(error));
+        mListener->onError_nb(weak_from_this(), static_cast<uint32_t>(error));
     }
 }
 
