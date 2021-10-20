@@ -155,6 +155,8 @@ private:
 
     // The bitrate currently configured on the v4l2 device.
     uint32_t mBitrate = 0;
+    // The bitrate mode currently configured on the v4l2 device.
+    C2Config::bitrate_mode_t mBitrateMode = C2Config::BITRATE_CONST;
     // The framerate currently configured on the v4l2 device.
     uint32_t mFramerate = 0;
     // The timestamp of the last frame encoded, used to dynamically adjust the framerate.

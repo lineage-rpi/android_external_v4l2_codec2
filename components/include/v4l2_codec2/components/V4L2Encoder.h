@@ -33,9 +33,10 @@ public:
 
     static std::unique_ptr<VideoEncoder> create(
             C2Config::profile_t profile, std::optional<uint8_t> level, const ui::Size& visibleSize,
-            uint32_t stride, uint32_t keyFramePeriod, FetchOutputBufferCB fetchOutputBufferCb,
-            InputBufferDoneCB inputBufferDoneCb, OutputBufferDoneCB outputBufferDoneCb,
-            DrainDoneCB drainDoneCb, ErrorCB errorCb,
+            uint32_t stride, uint32_t keyFramePeriod, C2Config::bitrate_mode_t bitrateMode,
+            uint32_t bitrate, std::optional<uint32_t> peakBitrate,
+            FetchOutputBufferCB fetchOutputBufferCb, InputBufferDoneCB inputBufferDoneCb,
+            OutputBufferDoneCB outputBufferDoneCb, DrainDoneCB drainDoneCb, ErrorCB errorCb,
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~V4L2Encoder() override;
 
@@ -44,6 +45,7 @@ public:
     void flush() override;
 
     bool setBitrate(uint32_t bitrate) override;
+    bool setPeakBitrate(uint32_t peakBitrate) override;
     bool setFramerate(uint32_t framerate) override;
     void requestKeyframe() override;
 
@@ -80,7 +82,9 @@ private:
 
     // Initialize the V4L2 encoder for specified parameters.
     bool initialize(C2Config::profile_t outputProfile, std::optional<uint8_t> level,
-                    const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod);
+                    const ui::Size& visibleSize, uint32_t stride, uint32_t keyFramePeriod,
+                    C2Config::bitrate_mode_t bitrateMode, uint32_t bitrate,
+                    std::optional<uint32_t> peakBitrate);
 
     // Handle the next encode request on the queue.
     void handleEncodeRequest();
@@ -101,6 +105,8 @@ private:
     // Configure required and optional H.264 controls on the V4L2 device.
     bool configureH264(C2Config::profile_t outputProfile,
                        std::optional<const uint8_t> outputH264Level);
+    // Configure the specified bitrate mode on the V4L2 device.
+    bool configureBitrateMode(C2Config::bitrate_mode_t bitrateMode);
 
     // Attempt to start the V4L2 device poller.
     bool startDevicePoll();

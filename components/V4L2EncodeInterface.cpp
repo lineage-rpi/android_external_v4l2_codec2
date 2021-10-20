@@ -310,6 +310,15 @@ void V4L2EncodeInterface::Initialize(const C2String& name) {
                          .withSetter(Setter<decltype(*mBitrate)>::StrictValueWithNoDeps)
                          .build());
 
+    addParameter(
+            DefineParam(mBitrateMode, C2_PARAMKEY_BITRATE_MODE)
+                    .withDefault(new C2StreamBitrateModeTuning::output(0u, C2Config::BITRATE_CONST))
+                    .withFields(
+                            {C2F(mBitrateMode, value)
+                                     .oneOf({C2Config::BITRATE_CONST, C2Config::BITRATE_VARIABLE})})
+                    .withSetter(Setter<decltype(*mBitrateMode)>::StrictValueWithNoDeps)
+                    .build());
+
     std::string outputMime;
     if (getCodecFromComponentName(name) == VideoCodec::H264) {
         outputMime = MEDIA_MIMETYPE_VIDEO_AVC;
