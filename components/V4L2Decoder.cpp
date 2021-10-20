@@ -192,7 +192,7 @@ bool V4L2Decoder::setupInputFormat(const uint32_t inputPixelFormat, const size_t
     return true;
 }
 
-void V4L2Decoder::decode(std::unique_ptr<BitstreamBuffer> buffer, DecodeCB decodeCb) {
+void V4L2Decoder::decode(std::unique_ptr<ConstBitstreamBuffer> buffer, DecodeCB decodeCb) {
     ALOGV("%s(id=%d)", __func__, buffer->id);
     ALOG_ASSERT(mTaskRunner->RunsTasksInCurrentSequence());
 
@@ -300,7 +300,7 @@ void V4L2Decoder::pumpDecodeRequest() {
         inputBuffer->setPlaneDataOffset(0, request.buffer->offset);
         inputBuffer->setPlaneBytesUsed(0, request.buffer->offset + request.buffer->size);
         std::vector<int> fds;
-        fds.push_back(std::move(request.buffer->dmabuf_fd));
+        fds.push_back(std::move(request.buffer->dmabuf.handle()->data[0]));
         if (!std::move(*inputBuffer).queueDMABuf(fds)) {
             ALOGE("%s(): Failed to QBUF to input queue, bitstreamId=%d", __func__, bitstreamId);
             onError();

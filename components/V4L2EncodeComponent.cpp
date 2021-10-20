@@ -830,13 +830,7 @@ void V4L2EncodeComponent::fetchOutputBlock(uint32_t size,
         reportError(status);
     }
 
-    // Store a reference to the block to keep the fds alive.
-    int fd = block->handle()->data[0];
-    ALOG_ASSERT(!mOutputBuffersMap[fd]);
-    mOutputBuffersMap[fd] = std::move(block);
-
-    // TODO(dstaessens) Store the C2LinearBlock directly into the BitstreamBuffer.
-    *buffer = std::make_unique<BitstreamBuffer>(fd, fd, 0, size);
+    *buffer = std::make_unique<BitstreamBuffer>(std::move(block), 0, size);
 }
 
 void V4L2EncodeComponent::onInputBufferDone(uint64_t index) {
@@ -886,12 +880,10 @@ void V4L2EncodeComponent::onOutputBufferDone(size_t dataSize, int64_t timestamp,
     ALOGV("%s(): output buffer done (timestamp: %" PRId64 ", size: %zu, keyframe: %d)", __func__,
           timestamp, dataSize, keyFrame);
     ALOG_ASSERT(mEncoderTaskRunner->RunsTasksInCurrentSequence());
+    ALOG_ASSERT(buffer->dmabuf);
 
-    std::shared_ptr<C2LinearBlock> outputBlock = std::move(mOutputBuffersMap[buffer->id]);
-    mOutputBuffersMap.erase(buffer->id);
-    ALOG_ASSERT(outputBlock);
-
-    C2ConstLinearBlock constBlock = outputBlock->share(outputBlock->offset(), dataSize, C2Fence());
+    C2ConstLinearBlock constBlock =
+            buffer->dmabuf->share(buffer->dmabuf->offset(), dataSize, C2Fence());
 
     // If no CSD (content-specific-data, e.g. SPS for H.264) has been submitted yet, we expect this
     // output block to contain CSD. We only submit the CSD once, even if it's attached to each key

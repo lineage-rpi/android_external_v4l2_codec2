@@ -168,9 +168,6 @@ private:
     // The queue of encode work items currently being processed.
     std::deque<std::unique_ptr<C2Work>> mWorkQueue;
 
-    // Map of buffer ids and associated C2LinearBlock buffers. The buffer's fds are used as id.
-    std::unordered_map<int32_t, std::shared_ptr<C2LinearBlock>> mOutputBuffersMap;
-
     // The output block pool.
     std::shared_ptr<C2BlockPool> mOutputBlockPool;
 
