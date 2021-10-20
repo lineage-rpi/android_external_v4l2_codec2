@@ -42,6 +42,9 @@ public:
     // Get sync key-frame period in frames.
     uint32_t getKeyFramePeriod() const;
 
+    // Request changing the framerate to the specified value.
+    void setFramerate(uint32_t framerate) { mFrameRate->value = framerate; }
+
 protected:
     void Initialize(const C2String& name);
 
