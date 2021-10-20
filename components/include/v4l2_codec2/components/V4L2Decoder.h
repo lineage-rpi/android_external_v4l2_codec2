@@ -31,7 +31,7 @@ public:
             scoped_refptr<::base::SequencedTaskRunner> taskRunner);
     ~V4L2Decoder() override;
 
-    void decode(std::unique_ptr<BitstreamBuffer> buffer, DecodeCB decodeCb) override;
+    void decode(std::unique_ptr<ConstBitstreamBuffer> buffer, DecodeCB decodeCb) override;
     void drain(DecodeCB drainCb) override;
     void flush() override;
 
@@ -45,12 +45,12 @@ private:
     static const char* StateToString(State state);
 
     struct DecodeRequest {
-        DecodeRequest(std::unique_ptr<BitstreamBuffer> buffer, DecodeCB decodeCb)
+        DecodeRequest(std::unique_ptr<ConstBitstreamBuffer> buffer, DecodeCB decodeCb)
               : buffer(std::move(buffer)), decodeCb(std::move(decodeCb)) {}
         DecodeRequest(DecodeRequest&&) = default;
         ~DecodeRequest() = default;
 
-        std::unique_ptr<BitstreamBuffer> buffer;  // nullptr means Drain
+        std::unique_ptr<ConstBitstreamBuffer> buffer;  // nullptr means Drain
         DecodeCB decodeCb;
     };
 

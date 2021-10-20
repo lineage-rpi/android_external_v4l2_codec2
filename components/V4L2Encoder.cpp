@@ -817,7 +817,7 @@ bool V4L2Encoder::enqueueOutputBuffer() {
     size_t bufferId = buffer->bufferId();
 
     std::vector<int> fds;
-    fds.push_back(bitstreamBuffer->dmabuf_fd);
+    fds.push_back(bitstreamBuffer->dmabuf->handle()->data[0]);
     if (!std::move(*buffer).queueDMABuf(fds)) {
         ALOGE("Failed to queue output buffer using QueueDMABuf");
         onError();
