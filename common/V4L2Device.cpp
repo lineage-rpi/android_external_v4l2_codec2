@@ -1439,6 +1439,27 @@ int32_t V4L2Device::h264LevelIdcToV4L2H264Level(uint8_t levelIdc) {
 }
 
 // static
+v4l2_mpeg_video_bitrate_mode V4L2Device::C2BitrateModeToV4L2BitrateMode(
+        C2Config::bitrate_mode_t bitrateMode) {
+    switch (bitrateMode) {
+    case C2Config::bitrate_mode_t::BITRATE_CONST_SKIP_ALLOWED:
+        ALOGW("BITRATE_CONST_SKIP_ALLOWED not supported, defaulting to BITRATE_CONST");
+        FALLTHROUGH;
+    case C2Config::bitrate_mode_t::BITRATE_CONST:
+        return V4L2_MPEG_VIDEO_BITRATE_MODE_CBR;
+    case C2Config::bitrate_mode_t::BITRATE_VARIABLE_SKIP_ALLOWED:
+        ALOGW("BITRATE_VARIABLE_SKIP_ALLOWED not supported, defaulting to BITRATE_VARIABLE");
+        FALLTHROUGH;
+    case C2Config::bitrate_mode_t::BITRATE_VARIABLE:
+        return V4L2_MPEG_VIDEO_BITRATE_MODE_VBR;
+    default:
+        ALOGW("Unsupported bitrate mode %u, defaulting to BITRATE_VARIABLE",
+              static_cast<uint32_t>(bitrateMode));
+        return V4L2_MPEG_VIDEO_BITRATE_MODE_VBR;
+    }
+}
+
+// static
 ui::Size V4L2Device::allocatedSizeFromV4L2Format(const struct v4l2_format& format) {
     ui::Size codedSize;
     ui::Size visibleSize;

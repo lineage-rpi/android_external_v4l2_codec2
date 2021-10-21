@@ -10,7 +10,7 @@ of this project, and the partners who are willing to use the V4L2 components.
 
 v4l2\_codec2 project provides a component implementation of Codec2 framework,
 the next-generation codec framework. The component implementation delegates the
-request to the driver via V4L2 API.
+request to the driver via the V4L2 API.
 
 ## Quick Start Guide
 
@@ -104,11 +104,31 @@ Add decode and encode components in media\_codecs\_c2.xml
 <MediaCodecs>
    <Encoders>
        <MediaCodec name="c2.v4l2.avc.encoder" type="video/avc">
-           <Limit name="size" min="32x32" max="4096x4096" />
+           <Limit name="size" min="32x32" max="1920x1088" />
            <Limit name="alignment" value="2x2" />
            <Limit name="block-size" value="16x16" />
-           <Limit name="blocks-per-second" range="1-983040" />
-           <Limit name="bitrate" range="1-40000000" />
+           <Limit name="blocks-per-second" range="1-244800" />
+           <Limit name="bitrate" range="1-12000000" />
+           <Limit name="concurrent-instances" max="8" />
+           <Limit name="performance-point-1280x720" range="30-30" />
+       </MediaCodec>
+
+       <MediaCodec name="c2.v4l2.vp8.encoder" type="video/x-vnd.on2.vp8">
+           <Limit name="size" min="32x32" max="1920x1088" />
+           <Limit name="alignment" value="2x2" />
+           <Limit name="block-size" value="16x16" />
+           <Limit name="blocks-per-second" range="1-244800" />
+           <Limit name="bitrate" range="1-12000000" />
+           <Limit name="concurrent-instances" max="8" />
+           <Limit name="performance-point-1280x720" range="30-30" />
+       </MediaCodec>
+
+       <MediaCodec name="c2.v4l2.vp9.encoder" type="video/x-vnd.on2.vp9">
+           <Limit name="size" min="32x32" max="1920x1088" />
+           <Limit name="alignment" value="2x2" />
+           <Limit name="block-size" value="16x16" />
+           <Limit name="blocks-per-second" range="1-244800" />
+           <Limit name="bitrate" range="1-12000000" />
            <Limit name="concurrent-instances" max="8" />
            <Limit name="performance-point-1280x720" range="30-30" />
        </MediaCodec>
@@ -288,3 +308,59 @@ extern "C" ::C2Allocator* CreateAllocator(::C2Allocator::id_t allocatorId) {
 }
 ```
 
+## V4L2 Encoder
+
+### Supported Codecs
+
+Currently the V4L2 encoder has support for the H.264, VP8 and VP9 codecs. Codec
+selection can be done by selecting the encoder with the appropriate name.
+
+- H26: *c2.v4l2.avc.encoder*
+- VP8: *c2.v4l2.vp8.encoder*
+- VP9: *c2.v4l2.vp9.encoder*
+
+### Supported Parameters:
+
+The following parameters are static and can not be changed at run-time:
+
+- *C2_PARAMKEY_PICTURE_SIZE*: This parameter can be used to configure the
+resolution of the encoded video stream.
+- *C2_PARAMKEY_PROFILE_LEVEL*: This parameter can be used to adjust the desired
+profile level. When using the H.264 codec the profile level might be adjusted to
+conform to the minimum requirements for the specified bitrate and framerate.
+- *C2_PARAMKEY_SYNC_FRAME_INTERVAL*: This parameter can be used to configure the
+desired time between subsequent key frames in microseconds.
+- *C2_PARAMKEY_BITRATE_MODE*: This parameter can be used to switch between
+constant (*C2Config::BITRATE_CONST*) and variable (*C2Config::BITRATE_VARIABLE*)
+bitrate modes. When using CBR the encoder will try to maintain a constant
+bitrate. This mode is preferable for video conferencing where maintaining a
+stable bitrate is more important than quality. When using VBR the encoder will
+be allowed to dynamically adjust the bitrate to maintain a constant quality. As
+the mediacodec framework does not provide facilities to configure the peak
+bitrate when using VBR, it is currently always set to 2x the target bitrate.
+
+The following parameters are dynamic, and can be freely adjusted at run-time:
+
+- *C2_PARAMKEY_BITRATE*: Use this parameter to specify the desired bitrate.
+- *C2_PARAMKEY_FRAME_RATE*: This parameter can be used to configure the desired
+framerate. Note that the encoder will automatically try to adjust the framerate
+if the timestamps on the input video frames don't match the configured
+framerate.
+- *C2_PARAMKEY_REQUEST_SYNC_FRAME*: This parameter can be used to request
+additional key frames in addition to the periodic ones requested through the
+*C2_PARAMKEY_SYNC_FRAME_INTERVAL* parameter.
+
+### Supported Input Pixel Formats:
+
+The V4L2 encoder supports various input pixel formats, however frames are
+currently always passed to the V4L2 encoder in the NV12 format. If a video frame
+using a different pixel format is passed to the encoder, format conversion will
+be performed to convert the frame to the NV12 format.
+
+### Additional Features:
+
+To improve the resilience of H.264 video streams when data is missing, SPS and
+PPS NAL units are prepended to IDR frames by enabling the
+*V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR* control. If the V4L2 driver does not
+support this control the encoder will manually cache and prepend SPS and PPS NAL
+units.
