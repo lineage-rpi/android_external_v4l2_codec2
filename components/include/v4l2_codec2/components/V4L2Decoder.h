@@ -102,6 +102,8 @@ private:
     // V4L2 buffer index.
     std::map<size_t, size_t> mBlockIdToV4L2Id;
 
+    enum v4l2_memory mInputMemoryType = V4L2_MEMORY_DMABUF;
+
     State mState = State::Idle;
 
     scoped_refptr<::base::SequencedTaskRunner> mTaskRunner;
