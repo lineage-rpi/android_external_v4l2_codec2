@@ -181,7 +181,19 @@ bool V4L2Decoder::setupInputFormat(const uint32_t inputPixelFormat, const size_t
     }
     ALOG_ASSERT(format->fmt.pix_mp.pixelformat == inputPixelFormat);
 
-    if (mInputQueue->allocateBuffers(kNumInputBuffers, V4L2_MEMORY_DMABUF) == 0) {
+    const uint32_t adjustedInputBufferSize = format->fmt.pix_mp.plane_fmt[0].sizeimage;
+    if (adjustedInputBufferSize < inputBufferSize) {
+        ALOGE("Adjusted input buffer size (%u) is smaller than requested (%zu).",
+              adjustedInputBufferSize, inputBufferSize);
+        return false;
+    } else if (adjustedInputBufferSize > inputBufferSize) {
+        ALOGI("Adjusted input buffer size is greater than requested, use MMAP");
+        mInputMemoryType = V4L2_MEMORY_MMAP;
+    } else {
+        mInputMemoryType = V4L2_MEMORY_DMABUF;
+    }
+
+    if (mInputQueue->allocateBuffers(kNumInputBuffers, mInputMemoryType) == 0) {
         ALOGE("Failed to allocate input buffer.");
         return false;
     }
@@ -295,14 +307,39 @@ void V4L2Decoder::pumpDecodeRequest() {
             return;
         }
 
-        ALOGV("Set bytes_used=%zu, offset=%zu", request.buffer->offset + request.buffer->size,
-              request.buffer->offset);
-        inputBuffer->setPlaneDataOffset(0, request.buffer->offset);
-        inputBuffer->setPlaneBytesUsed(0, request.buffer->offset + request.buffer->size);
-        std::vector<int> fds;
-        fds.push_back(std::move(request.buffer->dmabuf.handle()->data[0]));
-        if (!std::move(*inputBuffer).queueDMABuf(fds)) {
-            ALOGE("%s(): Failed to QBUF to input queue, bitstreamId=%d", __func__, bitstreamId);
+        switch (mInputMemoryType) {
+        case V4L2_MEMORY_DMABUF: {
+            ALOGV("Set bytes_used=%zu, offset=%zu", request.buffer->offset + request.buffer->size,
+                  request.buffer->offset);
+            inputBuffer->setPlaneDataOffset(0, request.buffer->offset);
+            inputBuffer->setPlaneBytesUsed(0, request.buffer->offset + request.buffer->size);
+
+            std::vector<int> fds;
+            fds.push_back(std::move(request.buffer->dmabuf.handle()->data[0]));
+            if (!std::move(*inputBuffer).queueDMABuf(fds)) {
+                ALOGE("%s(): Failed to QBUF to input queue, bitstreamId=%d", __func__, bitstreamId);
+                onError();
+                return;
+            }
+            break;
+        }
+
+        case V4L2_MEMORY_MMAP: {
+            inputBuffer->setPlaneDataOffset(0, 0);
+            inputBuffer->setPlaneBytesUsed(0, request.buffer->size);
+            auto dmabufMapping = request.buffer->dmabuf.map().get().data();
+            void* v4l2Mapping = inputBuffer->getPlaneMapping(0);
+            memcpy(reinterpret_cast<uint8_t*>(v4l2Mapping), dmabufMapping, request.buffer->size);
+            if (!std::move(*inputBuffer).queueMMap()) {
+                ALOGE("%s(): Failed to QBUF to input queue, bitstreamId=%d", __func__, bitstreamId);
+                onError();
+                return;
+            }
+            break;
+        }
+
+        default:
+            ALOGE("%s(): unknown input memory type: %u", __func__, mInputMemoryType);
             onError();
             return;
         }
