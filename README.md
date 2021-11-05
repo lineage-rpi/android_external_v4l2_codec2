@@ -18,7 +18,7 @@ request to the driver via the V4L2 API.
 
 *   Gralloc support for graphic buffer allocation
 *   ION or Gralloc support for linear buffer allocation
-*   DRM for buffer identification
+*   Kernel v5.3+ or [this patch][1] backported for buffer identification
 *   [V4L2 stateful decoding API](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-decoder.html)
 *   [V4L2 encoding API](https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-encoder.html)
 *   Widevine DRM for secure playback
@@ -47,12 +47,9 @@ PRODUCT_COPY_FILES += \
     <path_to_file>:$(TARGET_COPY_OUT_VENDOR)/etc/media_codecs_c2.xml
 
 # Set the customized property of v4l2_codec2, including:
-# - The DRM device name and path pattern.
 # - The maximum concurrent instances for decoder/encoder.
 #   It should be the same as "concurrent-instances" at media_codec_c2.xml.
 PRODUCT_PROPERTY_OVERRIDES += \
-    ro.vendor.v4l2_codec2.drm_device_name=virtio_gpu \
-    ro.vendor.v4l2_codec2.drm_device_path=/dev/dri/renderD* \
     ro.vendor.v4l2_codec2.decode_concurrent_instances=8 \
     ro.vendor.v4l2_codec2.encode_concurrent_instances=8
 
@@ -364,3 +361,5 @@ PPS NAL units are prepended to IDR frames by enabling the
 *V4L2_CID_MPEG_VIDEO_PREPEND_SPSPPS_TO_IDR* control. If the V4L2 driver does not
 support this control the encoder will manually cache and prepend SPS and PPS NAL
 units.
+
+[1]: https://android.googlesource.com/kernel/common/+/ed63bb1d1f8469586006a9ca63c42344401aa2ab
