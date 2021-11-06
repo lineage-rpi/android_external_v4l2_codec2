@@ -23,7 +23,7 @@ namespace {
 constexpr size_t k1080pArea = 1920 * 1088;
 constexpr size_t k4KArea = 3840 * 2160;
 // Input bitstream buffer size for up to 1080p streams.
-constexpr size_t kInputBufferSizeFor1080p = 1024 * 1024;  // 1MB
+constexpr size_t kInputBufferSizeFor1080p = 768 * 1024;  // 768KB
 // Input bitstream buffer size for up to 4k streams.
 constexpr size_t kInputBufferSizeFor4K = 4 * kInputBufferSizeFor1080p;
 
