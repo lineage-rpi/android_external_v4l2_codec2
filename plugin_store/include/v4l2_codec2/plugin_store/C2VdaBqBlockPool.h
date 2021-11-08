@@ -16,10 +16,6 @@
 
 namespace android {
 
-// We use the value of dma-buf inode as the unique ID of the graphic buffers.
-using unique_id_t = uint32_t;
-std::optional<unique_id_t> getDmabufId(int dmabufFd);
-
 /**
  * The BufferQueue-backed block pool design which supports to request arbitrary count of graphic
  * buffers from IGBP, and use this buffer set among codec component and client.
