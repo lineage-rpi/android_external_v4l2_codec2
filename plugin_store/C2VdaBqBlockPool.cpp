@@ -9,9 +9,6 @@
 
 #include <errno.h>
 #include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
 
 #include <chrono>
 #include <mutex>
@@ -27,6 +24,7 @@
 #include <log/log.h>
 #include <ui/BufferQueueDefs.h>
 
+#include <v4l2_codec2/plugin_store/DmabufHelpers.h>
 #include <v4l2_codec2/plugin_store/H2BGraphicBufferProducer.h>
 #include <v4l2_codec2/plugin_store/V4L2AllocatorId.h>
 
@@ -53,20 +51,6 @@ using ::android::BufferQueueDefs::BUFFER_NEEDS_REALLOCATION;
 using ::android::BufferQueueDefs::NUM_BUFFER_SLOTS;
 using ::android::hardware::Return;
 using HProducerListener = ::android::hardware::graphics::bufferqueue::V2_0::IProducerListener;
-
-std::optional<unique_id_t> getDmabufId(int dmabufFd) {
-    struct stat sb {};
-    if (fstat(dmabufFd, &sb) != 0) {
-        return std::nullopt;
-    }
-
-    if (sb.st_size == 0) {
-        ALOGE("Dma-buf size is 0. Please check your kernel is v5.3+");
-        return std::nullopt;
-    }
-
-    return static_cast<unique_id_t>(sb.st_ino);
-}
 
 static c2_status_t asC2Error(status_t err) {
     switch (err) {
