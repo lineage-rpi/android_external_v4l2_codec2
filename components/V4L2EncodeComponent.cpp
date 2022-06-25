@@ -757,7 +757,8 @@ bool V4L2EncodeComponent::encode(C2ConstGraphicBlock block, uint64_t index, int6
     constexpr int64_t kMaxFramerateDiff = 5;
     if (mLastFrameTime && (timestamp > *mLastFrameTime)) {
         int64_t newFramerate = std::max(
-                static_cast<int64_t>(std::round(1000000.0 / (timestamp - *mLastFrameTime))), 1LL);
+                static_cast<int64_t>(std::round(1000000.0 / (timestamp - *mLastFrameTime))),
+                static_cast<int64_t>(1LL));
         if (abs(mFramerate - newFramerate) > kMaxFramerateDiff) {
             ALOGV("Adjusting framerate to %" PRId64 " based on frame timestamps", newFramerate);
             mInterface->setFramerate(static_cast<uint32_t>(newFramerate));
