@@ -559,6 +559,7 @@ bool V4L2Decoder::changeResolution() {
 bool V4L2Decoder::setupOutputFormat(const ui::Size& size) {
     for (const uint32_t& pixfmt :
          mDevice->enumerateSupportedPixelformats(V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)) {
+        if (pixfmt != Fourcc::NV12) continue;
         if (std::find(kSupportedOutputFourccs.begin(), kSupportedOutputFourccs.end(), pixfmt) ==
             kSupportedOutputFourccs.end()) {
             ALOGD("Pixel format %s is not supported, skipping...", fourccToString(pixfmt).c_str());
