@@ -74,26 +74,6 @@ PRODUCT_COPY_FILES += \
     <path_to_policy>:$(TARGET_COPY_OUT_VENDOR)/etc/seccomp_policy/codec2.vendor.ext.policy
 ```
 
-Enable codec2 hidl in manifest.xml
-
-```xml
-<manifest version="1.0" type="device">
-    <hal format="hidl">
-        <name>android.hardware.media.c2</name>
-        <transport>hwbinder</transport>
-        <version>1.0</version>
-        <interface>
-            <name>IComponentStore</name>
-            <instance>default</instance>
-        </interface>
-        <interface>
-            <name>IConfigurable</name>
-            <instance>default</instance>
-        </interface>
-    </hal>
-</manifest>
-```
-
 Add decode and encode components in media\_codecs\_c2.xml
 
 ```xml
