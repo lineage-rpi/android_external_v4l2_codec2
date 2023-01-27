@@ -46,7 +46,7 @@ int main(int /* argc */, char** /* argv */) {
                 new utils::ComponentStore(android::V4L2ComponentStore::Create()));
         if (store == nullptr) {
             ALOGE("Cannot create Codec2's V4L2 IComponentStore service.");
-        } else if (store->registerAsService("default") != android::OK) {
+        } else if (store->registerAsService("v4l2") != android::OK) {
             ALOGE("Cannot register Codec2's IComponentStore service.");
         } else {
             ALOGI("Codec2's IComponentStore service created.");
