@@ -5,6 +5,8 @@
 //#define LOG_NDEBUG 0
 #define LOG_TAG "V4L2ComponentStore"
 
+#include <android-base/properties.h>
+
 #include <v4l2_codec2/components/V4L2ComponentStore.h>
 
 #include <stdint.h>
@@ -22,7 +24,8 @@
 
 namespace android {
 namespace {
-const uint32_t kComponentRank = 0x80;
+uint32_t kDecoderRank = ::android::base::GetUintProperty("persist.v4l2_codec2.rank.decoder", 0x80u);
+uint32_t kEncoderRank = ::android::base::GetUintProperty("persist.v4l2_codec2.rank.encoder", 0x80u);
 
 std::string getMediaTypeFromComponentName(const std::string& name) {
     if (name == V4L2ComponentName::kH264Decoder || name == V4L2ComponentName::kH264SecureDecoder ||
@@ -191,7 +194,8 @@ std::shared_ptr<const C2Component::Traits> V4L2ComponentStore::GetTraits(const C
     auto traits = std::make_shared<C2Component::Traits>();
     traits->name = name;
     traits->domain = C2Component::DOMAIN_VIDEO;
-    traits->rank = kComponentRank;
+    traits->rank = V4L2ComponentName::isEncoder(name.c_str()) ? kEncoderRank
+                                                              : kDecoderRank;
     traits->mediaType = getMediaTypeFromComponentName(name);
     traits->kind = V4L2ComponentName::isEncoder(name.c_str()) ? C2Component::KIND_ENCODER
                                                               : C2Component::KIND_DECODER;
